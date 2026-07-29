@@ -1,0 +1,39 @@
+name = "nairarate"
+main = "src/index.ts"
+compatibility_date = "2026-07-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Created with: wrangler kv namespace create RATES_KV
+# Paste the returned id below.
+[[kv_namespaces]]
+binding = "RATES_KV"
+id = "cb4ecede9b554dab8bba6a900a50327e"
+
+# Created with: wrangler d1 create nairarate
+# Paste the returned database_id below, then: npm run db:init
+[[d1_databases]]
+binding = "RATES_DB"
+database_name = "nairarate"
+database_id = "4bc7660c-89b9-44c8-8b63-5c06a6665a01"
+
+[triggers]
+# */15 * * * *  -> Monierate sync (parallel + crypto street)
+# 0 7 * * 1-5   -> CBN sync (official) + intraday prune, 07:00 UTC = 08:00 Lagos
+crons = ["*/15 * * * *", "0 7 * * 1-5"]
+
+[vars]
+ENVIRONMENT = "production"
+# 'base-sepolia' for testnet, 'base' for mainnet. Anything else defaults to
+# base-sepolia so a misconfigured deploy cannot start taking real money.
+X402_NETWORK = "base-sepolia"
+
+[observability]
+enabled = true
+
+# Secrets — set via `wrangler secret put <NAME>`, never committed:
+#   MONIERATE_API_KEY     Monierate API key
+#   X402_WALLET_ADDRESS   USDC-on-Base address that receives payments. Without it,
+#                         /v1/* fails closed with 503 rather than serving free.
+#
+# No facilitator credentials are needed: a resource server verifies and settles
+# through the facilitator and never signs. See src/payment/x402.ts.

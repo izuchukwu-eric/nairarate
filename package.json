@@ -1,0 +1,38 @@
+{
+  "name": "nairarate",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "x402-gated Nigerian FX intelligence API — official, parallel and stablecoin street rates",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "db:init": "wrangler d1 execute nairarate --remote --file=schema.sql",
+    "db:init:local": "wrangler d1 execute nairarate --local --file=schema.sql",
+    "backfill:cbn": "tsx scripts/backfill-cbn.ts",
+    "probe:cbn": "tsx scripts/probe-cbn.ts",
+    "backfill:cbn:apply": "wrangler d1 execute nairarate --remote --file=.backfill/cbn.sql",
+    "backfill:cbn:apply:local": "wrangler d1 execute nairarate --local --file=.backfill/cbn.sql",
+    "probe:monierate": "tsx scripts/probe-monierate.ts",
+    "backfill:monierate": "tsx scripts/backfill-monierate.ts",
+    "backfill:monierate:apply": "wrangler d1 execute nairarate --remote --file=.backfill/monierate.sql",
+    "backfill:monierate:apply:local": "wrangler d1 execute nairarate --local --file=.backfill/monierate.sql"
+  },
+  "dependencies": {
+    "@x402/evm": "^2.20.0",
+    "@x402/hono": "2.20.0",
+    "hono": "^4.12.32"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260722.1",
+    "@types/node": "^26.1.2",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0",
+    "wrangler": "^4.0.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true,
+    "workerd@1.20260722.1": true
+  }
+}
