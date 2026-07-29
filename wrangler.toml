@@ -28,7 +28,7 @@ ENVIRONMENT = "production"
 # "(hidden)" in deploy output, which would leave the setting that decides whether
 # real money moves invisible in both the repo and the logs.
 # Local development overrides this to base-sepolia via .dev.vars.
-X402_NETWORK = "base-sepolia"
+X402_NETWORK = "base"
 
 [observability]
 enabled = true
