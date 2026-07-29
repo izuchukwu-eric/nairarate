@@ -287,5 +287,7 @@ export function openApiHandler(c: Context<{ Bindings: Env }>): Response {
     })),
   }
 
-  return c.json(spec, 200, { 'cache-control': 'public, max-age=3600' })
+  // 60s, not an hour: the spec quotes prices, and a stale advertised price that
+  // disagrees with the live 402 challenge can break a caller's budget check.
+  return c.json(spec, 200, { 'cache-control': 'public, max-age=60' })
 }

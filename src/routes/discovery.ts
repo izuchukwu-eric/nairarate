@@ -17,6 +17,18 @@ import type { Env } from '../types/rates'
  * it cannot drift from what the API actually serves.
  */
 
+/**
+ * Cache lifetime for discovery documents that quote prices.
+ *
+ * Deliberately short. These are edge-cached, and a price change reaches the 402
+ * challenge instantly (it is generated per request) while a cached manifest keeps
+ * advertising the old figure until it expires. At max-age=3600 that is an hour in
+ * which an agent could read one price here and be charged another — enough to
+ * break an automated budget check. 60s bounds that window to something harmless
+ * while still absorbing crawler traffic.
+ */
+const PRICED_DOC_CACHE = 'public, max-age=60'
+
 function coverage() {
   return CURRENCIES.map((c) => ({
     code: c.code,
@@ -97,7 +109,7 @@ export function wellKnownX402Handler(c: Context<{ Bindings: Env }>): Response {
       links: { llms: `${origin}/llms.txt` },
     },
     200,
-    { 'cache-control': 'public, max-age=3600' },
+    { 'cache-control': PRICED_DOC_CACHE },
   )
 }
 
@@ -189,7 +201,7 @@ mid-task than an error. warnings explains any downgrade.
 
   return c.text(body, 200, {
     'content-type': 'text/plain; charset=utf-8',
-    'cache-control': 'public, max-age=3600',
+    'cache-control': PRICED_DOC_CACHE,
   })
 }
 
