@@ -171,6 +171,47 @@ export async function getDailySeries(
   return results ?? []
 }
 
+export interface LatestOfficialRow {
+  currency: string
+  rate_date: string
+  bid: number | null
+  ask: number | null
+  mid: number | null
+  high: number | null
+  low: number | null
+  close: number | null
+  turnover: number | null
+  deal_count: number | null
+}
+
+/**
+ * Each currency's most recent official row from D1.
+ *
+ * A fallback for `rebuild-payload` when the `latest:cbn` KV payload is absent.
+ * That happens on a fresh deploy — the CBN cron only runs weekdays at 07:00 UTC,
+ * so without this the API would serve `official: null` for every currency until
+ * the next weekday morning, despite 51k backfilled rows sitting right here. It
+ * also covers KV loss generally.
+ *
+ * Still not on the request path: this runs in the cron, which writes the result
+ * into the served KV payload.
+ *
+ * `GROUP BY` with bare columns is relying on SQLite's documented min/max
+ * optimisation — with `MAX(rate_date)` the other bare columns come from the
+ * matching row. This is SQLite-specific behaviour, and D1 is SQLite.
+ */
+export async function getLatestOfficialRates(env: Env): Promise<LatestOfficialRow[]> {
+  const { results } = await env.RATES_DB.prepare(
+    `SELECT currency, MAX(rate_date) AS rate_date, bid, ask, mid,
+            high, low, close, turnover, deal_count
+       FROM rate_daily
+      WHERE market = 'official' AND mid IS NOT NULL
+      GROUP BY currency`,
+  ).all<LatestOfficialRow>()
+
+  return results ?? []
+}
+
 /**
  * Roll intraday snapshots for a UTC day into a single daily row per
  * currency/market, so /history has a parallel series to read once the 15-minute

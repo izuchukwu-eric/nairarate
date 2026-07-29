@@ -4,28 +4,26 @@ Run in order. Every step has a verification — do not proceed past a failed che
 
 ---
 
-## 0. Blocker to resolve first
+## 0. Resolved — deploy-day official-rate gap (Option A, done)
 
-**On deploy day, `/v1/rates` will return `official: null` for all 15 currencies.**
+The original problem: `rebuild-payload` read official rates only from the KV key
+`latest:cbn`, written solely by the CBN cron, which runs **weekdays at 07:00 UTC**.
+A fresh deploy therefore served `official: null` for all 15 currencies — and a null
+`parallel_vs_official_pct`, the headline number — until the next weekday morning,
+despite 51,028 official rows sitting in D1.
 
-Verified locally: `rebuild-payload.ts` reads official rates from the KV key
-`latest:cbn`, which is only written by the CBN cron — and that cron runs
-**weekdays at 07:00 UTC only**. The 51,028 backfilled official rows live in D1,
-which the request path deliberately never touches.
+Fixed by `getLatestOfficialRates` in `src/cache/d1.ts`: when `latest:cbn` is absent,
+the cron reads each currency's latest official row from D1 instead. Verified by
+simulating deploy-day state (D1 backfilled, `latest:cbn` deleted):
 
-So between deploying and the next weekday 07:00 UTC, the product serves
-parallel rates with `confidence: medium` and every `parallel_vs_official_pct`
-null — the headline number gone. Deploy on a Friday evening and that is ~60 hours.
+    before:  official present 0 of 15, every spread null
+    after:   official present 12 of 15, spreads populated
+             warning: "Official rates are being served from stored history
+                       rather than a live CBN sync — most recent business date …"
 
-Pick one before deploying:
-
-| Option | Effort | Result |
-|---|---|---|
-| **A. D1 fallback in `rebuild-payload`** (recommended) | ~15 lines | Reads latest official rows from D1 when `latest:cbn` is absent. Removes the gap entirely and makes the service resilient to KV loss. |
-| B. Time the deploy | none | Deploy Mon–Fri before 07:00 UTC, wait for the cron, verify, then announce. |
-| C. Temporary extra cron | 1 line + redeploy | Add `"5 * * * *"` for the first day, then remove. |
-
-Say which and it goes in before step 1.
+Twelve, not eleven, because XAF borrows XOF's unified CFA series. KV still takes
+precedence when present — confirmed by the absence of the fallback warning on a
+normal run. Also covers KV loss generally.
 
 ---
 
@@ -131,7 +129,11 @@ Do **not** run `backfill:monierate` — deferred by decision, and it costs
 
 ## 6. Deploy to Sepolia first
 
-`wrangler.toml` should still say `X402_NETWORK = "base-sepolia"`.
+`wrangler.toml` now says `X402_NETWORK = "base"` for the mainnet deploy, so for the
+Sepolia pass either temporarily set it to `"base-sepolia"` or accept that this step
+tests mainnet requirements. **Do not skip the Sepolia settlement test** — it is the
+last cheap chance to find a payment problem. Local `wrangler dev` stays on Sepolia
+regardless, via `.dev.vars`.
 
 ```bash
 npm run typecheck                                # must be clean
@@ -171,7 +173,9 @@ the rate payload. This is the last cheap chance to find a settlement problem.
 ## 8. Switch to mainnet
 
 ```bash
-# Edit wrangler.toml:  X402_NETWORK = "base"
+# wrangler.toml already reads X402_NETWORK = "base".
+# If step 6 temporarily changed it, restore it now.
+grep '^X402_NETWORK' wrangler.toml        # must be "base"
 npx wrangler deploy
 ```
 
@@ -198,6 +202,25 @@ curl -sD - -o /dev/null https://nairarate.dev/v1/rates \
 `asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"` (mainnet USDC),
 `payTo` = your address.
 
+Then the free discovery surface:
+
+```bash
+for p in /.well-known/x402 /llms.txt /methodology /openapi.json; do
+  curl -s -o /dev/null -w "$p %{http_code}\n" "https://nairarate.dev$p"
+done
+```
+
+**Verify:** all four return 200 without payment.
+
+```bash
+# Bazaar declaration reaches the wire (this is what indexers read)
+curl -sD - -o /dev/null https://nairarate.dev/v1/rates \
+  | grep -i '^payment-required:' | cut -d' ' -f2 | base64 -d \
+  | jq '.extensions.bazaar.info.input.method'
+```
+
+**Verify:** `"GET"`.
+
 ---
 
 ## 10. One real mainnet settlement
@@ -217,6 +240,12 @@ at $0.01, which exercises the `upto` path.
 
 **Only after all of this is green does anything get submitted anywhere.**
 See [DISTRIBUTION.md](DISTRIBUTION.md).
+
+A note on step 10 verification 4: the middleware validates only that
+`X402_WALLET_ADDRESS` is a well-formed 20-byte hex address — **not that you control
+it**. A confirmed transaction to a mistyped address is still confirmed, and still
+unrecoverable. Confirm the balance increased in a wallet you can withdraw from
+before treating settlement as proven.
 
 ---
 

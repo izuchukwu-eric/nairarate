@@ -30,7 +30,12 @@ import type { RoutesConfig } from '@x402/core/server'
 import type { Network } from '@x402/core/types'
 import { ExactEvmScheme } from '@x402/evm/exact/server'
 import { UptoEvmScheme } from '@x402/evm/upto/server'
+import {
+  bazaarResourceServerExtension,
+  declareDiscoveryExtension,
+} from '@x402/extensions/bazaar'
 
+import { CURRENCY_CODES } from '../config/currencies'
 import type { Env } from '../types/rates'
 
 export type X402Network = 'base' | 'base-sepolia'
@@ -70,23 +75,6 @@ export function resolveNetwork(env: Env): X402Network {
 }
 
 /**
- * Build the route payment requirements.
- *
- * `/v1/rates` takes `exact` alone — the price is a flat $0.002 and every x402
- * client implements `exact`.
- *
- * `/v1/rates/history` advertises **both** `upto` and `exact`. `accepts` is an
- * array and the client picks, so `upto` is available for usage-based pricing later
- * without making the endpoint uncallable today by the many clients that only
- * implement `exact`. Advertising `upto` alone would gate a paid endpoint behind
- * the less widely supported scheme for no present benefit.
- *
- * Note `upto` currently settles the full declared maximum: it authorises up to an
- * amount and the server declares the actual one at settlement. Charging by `days`
- * requested is the obvious use, and needs `setSettlementOverrides` from
- * @x402/hono in the handler — deliberately not wired, since pricing is flat today.
- */
-/**
  * Body for an unpaid 402.
  *
  * The machine-readable requirements travel in the `PAYMENT-REQUIRED` header, and
@@ -110,6 +98,94 @@ function unpaidBody(endpoint: string, price: string, network: Network) {
   })
 }
 
+/**
+ * Bazaar discovery declarations.
+ *
+ * Bazaar is the x402 protocol's own discovery layer, and it is how indexes find a
+ * service without a manual submission — x402scan's front page reads a
+ * `sellers.bazaar.featured` collection. Verified that PayAI participates and is
+ * not CDP-coupled: `GET facilitator.payai.network/discovery/resources` returns 100
+ * live resources including `eip155:8453` v2 entries, so declaring this against
+ * PayAI is sufficient and no Coinbase dependency is introduced.
+ *
+ * `input`/`inputSchema` describe the query parameters, and `output.example` gives
+ * an indexer something concrete to show. Keep the example small — it is metadata,
+ * not a response.
+ */
+const RATES_DISCOVERY = declareDiscoveryExtension({
+  // No `method` here: it is omitted from DeclareDiscoveryExtensionInput and
+  // derived from the route key by bazaarResourceServerExtension.enrichDeclaration.
+  input: { currencies: 'USD,USDT', markets: 'all' },
+  inputSchema: {
+    properties: {
+      currencies: {
+        type: 'string',
+        description:
+          `Comma-separated filter. Supported: ${CURRENCY_CODES.join(', ')}. Default: all.`,
+      },
+      markets: {
+        type: 'string',
+        description: 'official, parallel, crypto_street, or all. Default: all.',
+      },
+    },
+    required: [],
+  },
+  output: {
+    example: {
+      timestamp: '2026-07-28T10:18:00Z',
+      base: 'NGN',
+      confidence: 'high',
+      rates: {
+        USD: {
+          official: { bid: 1364.53, ask: 1365.53, mid: 1365.53, source: 'CBN NFEM' },
+          parallel: { bid: 1383.48, ask: 1402.91, mid: 1393.19, provider_count: 43 },
+          crypto_street: null,
+        },
+      },
+      spreads: { USD: { parallel_vs_official_pct: 2.03 } },
+      trend_7d: { USD: { official_direction: 'appreciating' } },
+    },
+  },
+})
+
+const HISTORY_DISCOVERY = declareDiscoveryExtension({
+  input: { currency: 'USD', market: 'parallel', days: 7 },
+  inputSchema: {
+    properties: {
+      currency: { type: 'string', description: `One of: ${CURRENCY_CODES.join(', ')}.` },
+      market: { type: 'string', description: 'official, parallel, or crypto_street.' },
+      days: { type: 'integer', description: '1-30. Default 7.' },
+    },
+    required: ['currency', 'market'],
+  },
+  output: {
+    example: {
+      currency: 'USD',
+      market: 'official',
+      days: 7,
+      snapshots: [{ date: '2026-07-28', bid: 1364.53, ask: 1365.53, mid: 1365.53 }],
+      trend: { direction: 'appreciating', change_pct: -0.71, high: 1375.31, low: 1362.09 },
+    },
+  },
+})
+
+/**
+ * Build the route payment requirements.
+ *
+ * `/v1/rates` takes `exact` alone — the price is a flat $0.002 and every x402
+ * client implements `exact`.
+ *
+ * `/v1/rates/history` advertises **both** `upto` and `exact`. `accepts` is an
+ * array and the client picks, so `upto` is available for usage-based pricing later
+ * without making the endpoint uncallable today by the many clients that only
+ * implement `exact`. Advertising `upto` alone would gate a paid endpoint behind
+ * the less widely supported scheme for no present benefit.
+ *
+ * Note `upto` currently settles the full declared maximum: it authorises up to an
+ * amount and the server declares the actual one at settlement. Charging by `days`
+ * requested is the obvious use, and needs `setSettlementOverrides` from
+ * @x402/hono in the handler — deliberately not wired, since pricing is flat today.
+ */
 export function buildRoutes(payTo: string, network: Network): RoutesConfig {
   return {
     'GET /v1/rates': {
@@ -121,6 +197,7 @@ export function buildRoutes(payTo: string, network: Network): RoutesConfig {
       mimeType: 'application/json',
       serviceName: 'nairarate.dev',
       tags: ['fx', 'nigeria', 'ngn', 'exchange-rates', 'parallel-market', 'stablecoin'],
+      extensions: RATES_DISCOVERY,
     },
     'GET /v1/rates/history': {
       accepts: [
@@ -134,6 +211,7 @@ export function buildRoutes(payTo: string, network: Network): RoutesConfig {
       mimeType: 'application/json',
       serviceName: 'nairarate.dev',
       tags: ['fx', 'nigeria', 'ngn', 'historical', 'time-series'],
+      extensions: HISTORY_DISCOVERY,
     },
   }
 }
@@ -152,6 +230,9 @@ export function buildResourceServer(network: Network, facilitatorUrls: readonly 
   return new x402ResourceServer(clients)
     .register(network, new ExactEvmScheme())
     .register(network, new UptoEvmScheme())
+    // Enriches the per-route Bazaar declarations with method and route template at
+    // request time, and is what makes the routes discoverable to indexers.
+    .registerExtension(bazaarResourceServerExtension)
 }
 
 export interface X402Setup {

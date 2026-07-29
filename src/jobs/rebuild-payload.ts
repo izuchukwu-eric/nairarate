@@ -1,4 +1,4 @@
-import { getDailySeries } from '../cache/d1'
+import { getDailySeries, getLatestOfficialRates } from '../cache/d1'
 import { getCbnPayload, getMonieratePayload, getSourceStatus, putCachedRates } from '../cache/kv'
 import { CBN_OFFICIAL_SOURCE } from '../collectors/cbn'
 import { computeSpreadDirection, computeSpreads } from '../compute/spreads'
@@ -43,28 +43,65 @@ export async function rebuildRatesPayload(env: Env, now: Date = new Date()): Pro
     getSourceStatus(env, 'monierate'),
   ])
 
+  /**
+   * Official rates come from the `latest:cbn` KV payload when the CBN cron has
+   * run, and from D1 when it has not.
+   *
+   * The D1 path matters on a fresh deploy: the CBN cron fires weekdays at 07:00
+   * UTC, so a Friday-evening launch would otherwise serve `official: null` for
+   * every currency — and therefore a null `parallel_vs_official_pct`, the headline
+   * number — for around 60 hours, despite the backfill having 24 years of official
+   * rates in D1 already.
+   */
+  const officialFromKv = cbn !== null && Object.keys(cbn.rates).length > 0
+  const officialFallback = officialFromKv ? [] : await getLatestOfficialRates(env)
+  const fallbackByCode = new Map(officialFallback.map((r) => [r.currency, r]))
+
+  if (!officialFromKv) {
+    console.warn(
+      `rebuild-payload: latest:cbn is absent, serving official rates from D1 ` +
+        `(${fallbackByCode.size} currencies). Expected before the first CBN cron run.`,
+    )
+  }
+
   const rates: Record<string, CurrencyRates> = {}
 
   for (const def of CURRENCIES) {
     // XAF borrows XOF's unified CFA official series; everything else uses its own.
     const officialCode = def.officialFrom ?? def.code
-    const officialRate = cbn?.rates[officialCode]
     const monierateRate = monierate?.rates[def.code]
 
     let official: OfficialQuote | null = null
-    if (officialRate && cbn) {
+
+    const kvRate = cbn?.rates[officialCode]
+    const d1Rate = fallbackByCode.get(officialCode)
+
+    if (kvRate) {
       official = {
-        bid: officialRate.bid,
-        ask: officialRate.ask,
-        mid: officialRate.mid,
+        bid: kvRate.bid,
+        ask: kvRate.ask,
+        mid: kvRate.mid,
         source: CBN_OFFICIAL_SOURCE,
         // This currency's own business date, which may lag the payload's newest.
-        updated_at: `${officialRate.rateDate}T00:00:00Z`,
-        high: officialRate.high ?? null,
-        low: officialRate.low ?? null,
-        close: officialRate.close ?? null,
-        turnover: officialRate.turnover ?? null,
-        deal_count: officialRate.dealCount ?? null,
+        updated_at: `${kvRate.rateDate}T00:00:00Z`,
+        high: kvRate.high ?? null,
+        low: kvRate.low ?? null,
+        close: kvRate.close ?? null,
+        turnover: kvRate.turnover ?? null,
+        deal_count: kvRate.dealCount ?? null,
+      }
+    } else if (d1Rate && d1Rate.mid !== null) {
+      official = {
+        bid: d1Rate.bid,
+        ask: d1Rate.ask,
+        mid: d1Rate.mid,
+        source: CBN_OFFICIAL_SOURCE,
+        updated_at: `${d1Rate.rate_date}T00:00:00Z`,
+        high: d1Rate.high,
+        low: d1Rate.low,
+        close: d1Rate.close,
+        turnover: d1Rate.turnover,
+        deal_count: d1Rate.deal_count,
       }
     }
 
@@ -129,6 +166,11 @@ export async function rebuildRatesPayload(env: Env, now: Date = new Date()): Pro
     }
   }
 
+  const newestOfficialDate = officialFallback.reduce<string | null>(
+    (max, r) => (max === null || r.rate_date > max ? r.rate_date : max),
+    null,
+  )
+
   const monierateAge = ageMinutes(monierate ? iso(monierate.fetchedAt) : null, now)
   const { confidence, warnings } = computeConfidence({
     monierateAgeMinutes: monierateAge,
@@ -137,6 +179,13 @@ export async function rebuildRatesPayload(env: Env, now: Date = new Date()): Pro
     cbnErrored: cbnStatus.lastError !== null,
     failedTickers: monierate?.failedTickers,
   })
+
+  if (!officialFromKv && fallbackByCode.size > 0) {
+    warnings.push(
+      'Official rates are being served from stored history rather than a live CBN sync — ' +
+        `most recent business date ${newestOfficialDate}. The CBN sync runs weekdays at 07:00 UTC.`,
+    )
+  }
 
   // Surface unmapped CBN labels to callers, not just to logs — a silently dropped
   // currency is exactly the kind of gap someone pricing FX needs to know about.
@@ -152,7 +201,11 @@ export async function rebuildRatesPayload(env: Env, now: Date = new Date()): Pro
     base: 'NGN',
     data_age: {
       parallel_minutes: monierateAge,
-      official_minutes: cbn ? ageMinutes(iso(cbn.fetchedAt), now) : null,
+      // On the D1 fallback path there is no fetch timestamp, so age is measured
+      // from the newest business date served rather than reported as null.
+      official_minutes: cbn
+        ? ageMinutes(iso(cbn.fetchedAt), now)
+        : ageMinutes(newestOfficialDate ? `${newestOfficialDate}T00:00:00Z` : null, now),
     },
     confidence,
     rates,

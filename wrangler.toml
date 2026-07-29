@@ -23,9 +23,12 @@ crons = ["*/15 * * * *", "0 7 * * 1-5"]
 
 [vars]
 ENVIRONMENT = "production"
-# 'base-sepolia' for testnet, 'base' for mainnet. Anything else defaults to
-# base-sepolia so a misconfigured deploy cannot start taking real money.
-X402_NETWORK = "base-sepolia"
+# The network real payments settle on. Deliberately a var, not a secret: a secret
+# of the same name silently overrides this with no warning and renders as
+# "(hidden)" in deploy output, which would leave the setting that decides whether
+# real money moves invisible in both the repo and the logs.
+# Local development overrides this to base-sepolia via .dev.vars.
+X402_NETWORK = "base"
 
 [observability]
 enabled = true

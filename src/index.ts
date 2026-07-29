@@ -5,15 +5,26 @@ import { setupX402 } from './payment/x402'
 import type { X402Setup } from './payment/x402'
 import { syncCbn } from './jobs/sync-cbn'
 import { syncMonierate } from './jobs/sync-monierate'
+import {
+  llmsTxtHandler,
+  methodologyHandler,
+  wellKnownX402Handler,
+} from './routes/discovery'
 import { healthHandler } from './routes/health'
+import { openApiHandler } from './routes/openapi'
 import { historyHandler } from './routes/history'
 import { ratesHandler } from './routes/rates'
 import type { Env } from './types/rates'
 
 const app = new Hono<{ Bindings: Env }>()
 
-// Free routes, registered before any payment middleware.
+// Free routes, registered before any payment middleware. Discovery has to be free:
+// an agent cannot decide to pay for something it cannot first read about.
 app.get('/health', healthHandler)
+app.get('/.well-known/x402', wellKnownX402Handler)
+app.get('/llms.txt', llmsTxtHandler)
+app.get('/methodology', methodologyHandler)
+app.get('/openapi.json', openApiHandler)
 
 app.get('/', (c) =>
   c.json({
@@ -31,7 +42,12 @@ app.get('/', (c) =>
       bid: 'NGN received per unit of foreign currency (the low side).',
       ask: 'NGN paid per unit of foreign currency (the high side).',
     },
-    methodology: 'https://nairarate.dev/methodology',
+    discovery: {
+      'GET /.well-known/x402': 'Machine-readable service manifest.',
+      'GET /llms.txt': 'Plain-text description for agents.',
+      'GET /methodology': 'How the rates are derived and screened.',
+      'GET /openapi.json': 'OpenAPI 3.1 spec.',
+    },
     docs: 'https://nairarate.dev',
   }),
 )
