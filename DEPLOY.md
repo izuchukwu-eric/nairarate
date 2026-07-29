@@ -166,7 +166,25 @@ curl -sD - -o /dev/null https://<worker-subdomain>.workers.dev/v1/rates \
 Then make a **real Sepolia payment** with an x402 client and confirm a 200 with
 the rate payload. This is the last cheap chance to find a settlement problem.
 
-**Verify:** 200, `confidence` present, `rates.USD.parallel.mid` populated.
+**Verify:** 200, `confidence` present, `rates.USD.parallel.mid` populated, and the
+`PAYMENT-RESPONSE` header present (not `X-PAYMENT-RESPONSE` — see step 10).
+
+**DONE 2026-07-29.** Settled on Base Sepolia: $0.030000 USDC, block 44762332,
+tx `0x31f5a50336a8ed096e73ad34f44a069a3f9258bc4a5de78fbd7d5a39940eb124`.
+Confirmed independently by `balanceOf` on the payTo address, not just by the
+client's own report.
+
+Client-side gotchas found during the rehearsal, for whoever repeats this on
+mainnet:
+- The test client needs `"type": "module"` and a tsconfig with NodeNext
+  resolution, or tsx transforms it as CJS and top-level await fails.
+- `wrapFetchWithPayment(fetch, client)` takes an **x402Client with per-network
+  schemes registered**, not a viem wallet client. A wallet client produces
+  `this.client.getExtensions is not a function`. Build it with
+  `new x402Client().register('eip155:<id>', new ExactEvmScheme(signer))`, where
+  the signer comes from `toClientEvmSigner(account, publicClient)` — a *public*
+  client, which is what allows on-chain reads for EIP-2612 enrichment.
+- `privateKeyToAccount` needs the `0x` prefix on the key.
 
 ---
 
@@ -230,7 +248,12 @@ Pay **$0.03 of real USDC** on Base for one `/v1/rates` call with an x402 client.
 **Verify all four:**
 
 1. HTTP 200 with the full rate payload.
-2. `X-PAYMENT-RESPONSE` header present with a settlement transaction hash.
+2. **`PAYMENT-RESPONSE`** header present, carrying the settlement receipt.
+   Note the name: the x402 **v2** server emits `PAYMENT-RESPONSE` with no prefix
+   (`@x402/core/server` `createSettlementHeaders`). `X-PAYMENT-RESPONSE` also
+   appears in the SDK but only on v1 compatibility paths — reading that one
+   returns null on a payment that in fact succeeded, which is exactly what
+   happened during the Sepolia rehearsal.
 3. That hash confirmed on Basescan, USDC arriving at `X402_WALLET_ADDRESS`.
 4. **The USDC balance actually increased** — a confirmed transaction to the wrong
    address still confirms.
