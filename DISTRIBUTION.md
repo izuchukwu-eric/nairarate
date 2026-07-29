@@ -5,30 +5,33 @@ mainnet settlement, verified on Basescan.
 
 ---
 
-## 0. Prerequisite: we are not discoverable yet
+## 0. Discovery — done
 
-Worth knowing before submitting anywhere. Reading how the existing awesome-x402
-listings describe themselves, this ecosystem has settled on a set of
-machine-readable discovery conventions, and **we implement none of them**:
+The ecosystem has converged on machine-readable discovery, and all of it is now
+implemented and verified live:
 
-| Convention | What it is | Status |
-|---|---|---|
-| **Bazaar extension** | The x402 protocol's own discovery layer. Declared per-route via `extensions.bazaar`; `@x402/extensions/bazaar` is already an installed dependency (`withBazaar`, `declareDiscoveryExtension`). | **Not declared** |
-| `/.well-known/x402` | Static manifest of endpoints, prices, networks. Most listings advertise one. | Missing |
-| `/llms.txt` | Plain-text description for agents and LLM crawlers. | Missing |
-| `/openapi.json` | OpenAPI 3 spec. | Missing |
-| `/.well-known/agent.json` | Agent card. | Missing |
+| Convention | Status |
+|---|---|
+| **Bazaar extension** | Declared per-route. Confirmed reaching the 402 challenge as `extensions.bazaar`, with `method` derived by `enrichDeclaration`. |
+| `/.well-known/x402` | Service manifest — endpoints, prices, network, per-currency coverage. |
+| `/llms.txt` | Plain-text description for agents, explicit about coverage gaps. |
+| `/openapi.json` | OpenAPI 3.1, all `$ref`s resolve. |
+| `/methodology` | The screening rules as plain text. |
 
-**Bazaar is the important one.** x402scan's own front page queries a
-`sellers.bazaar.featured` collection — Bazaar is its index source, so declaring it
-is how a service gets picked up automatically rather than only by manual
-submission. Several listings mention routing settlement through a specific
-facilitator "for Bazaar indexing", so it is worth confirming PayAI participates in
-Bazaar before assuming auto-indexing follows from the declaration alone.
+All five are free and unauthenticated — an agent cannot decide to pay for something
+it cannot first read about. All are generated from the currency registry and
+payment constants, so they cannot drift from what is served.
 
-Recommended order: declare Bazaar and add `/.well-known/x402` + `/llms.txt`
-(roughly half a day together), **then** submit. Submitting first means the manual
-listings are all we get.
+**The PayAI/Bazaar question is settled: PayAI participates and is not CDP-coupled.**
+`GET facilitator.payai.network/discovery/resources` returns 100 live resources with
+`accepts`, `resource`, `inputSchema`/`outputSchema` and `lastUpdated`, including
+`eip155:8453` v2 entries. x402.org's testnet facilitator has no equivalent endpoint
+(404), so mainnet indexing rides on PayAI — which is where we settle anyway. No
+Coinbase dependency was introduced.
+
+`/.well-known/agent.json` (agent card) is still absent. Skipped for v1: it is an
+A2A convention rather than an x402 one, and none of the four target directories
+appear to read it.
 
 ---
 

@@ -137,7 +137,7 @@ regardless, via `.dev.vars`.
 
 ```bash
 npm run typecheck                                # must be clean
-npx wrangler deploy --dry-run                    # confirm bundle ~143 KiB gzip
+npx wrangler deploy --dry-run                    # confirm bundle ~150 KiB gzip
 npx wrangler deploy
 ```
 
