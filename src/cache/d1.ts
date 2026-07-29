@@ -151,6 +151,10 @@ export interface DailySeriesRow {
  * Ascending by date so trend maths can read the ends of the array directly.
  * Only ever called from /v1/rates/history — never from /v1/rates, which is a
  * single KV read.
+ *
+ * The window is exclusive at the lower bound: `> date('now', '-N days')` yields at
+ * most N calendar days. With `>=` it was N+1 — `days=7` returned 8 rows — which is
+ * a visible inconsistency now that `days` also determines the settled amount.
  */
 export async function getDailySeries(
   env: Env,
@@ -162,7 +166,7 @@ export async function getDailySeries(
     `SELECT rate_date, bid, ask, mid
        FROM rate_daily
       WHERE currency = ? AND market = ?
-        AND rate_date >= date('now', ?)
+        AND rate_date > date('now', ?)
       ORDER BY rate_date ASC`,
   )
     .bind(currency, market, `-${days} days`)
