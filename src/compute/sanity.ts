@@ -13,8 +13,28 @@
  * multiples away from its immediate neighbours is an error, not a market event.
  */
 
-/** A value this many times away from its local median is treated as an error. */
+/**
+ * A value this many times away from its local median is treated as an error.
+ *
+ * Calibrated for CBN's published history, whose errors are decimal slips — a
+ * Danish krone at 198,024 against a ~200 baseline, i.e. ~1000x. 5x clears those
+ * comfortably without touching genuine devaluation.
+ */
 export const OUTLIER_RATIO = 5
+
+/**
+ * Tighter threshold for daily FX candle series.
+ *
+ * Measured against the full 4,251-row Monierate backfill: the largest *genuine*
+ * deviation from a local median anywhere in it is 1.13x, while the bad rows sit at
+ * 3.17x — three currencies all dated 2025-10-01, an upstream incident. So the two
+ * populations are cleanly separated and 5x was too loose to catch them.
+ *
+ * 2.5x is the chosen middle: above the ~1.63x single-day jump of the June 2023
+ * naira float (the sharpest real move on record, and a plausible repeat), and well
+ * below the observed bad data.
+ */
+export const DAILY_OUTLIER_RATIO = 2.5
 
 /** Rows either side of a point that form its comparison window. */
 const WINDOW_RADIUS = 5
@@ -45,7 +65,10 @@ export interface OutlierReport<T> {
  * short to form a window are kept — with nothing to compare against, rejecting
  * would be a guess.
  */
-export function rejectOutliers<T extends SeriesPoint>(rows: readonly T[]): OutlierReport<T> {
+export function rejectOutliers<T extends SeriesPoint>(
+  rows: readonly T[],
+  ratio: number = OUTLIER_RATIO,
+): OutlierReport<T> {
   const byCurrency = new Map<string, T[]>()
   for (const row of rows) {
     const list = byCurrency.get(row.currency)
@@ -73,8 +96,8 @@ export function rejectOutliers<T extends SeriesPoint>(rows: readonly T[]): Outli
         continue
       }
 
-      const ratio = row.mid > local ? row.mid / local : local / row.mid
-      if (ratio > OUTLIER_RATIO) rejected.push({ row, localMedian: local, ratio })
+      const deviation = row.mid > local ? row.mid / local : local / row.mid
+      if (deviation > ratio) rejected.push({ row, localMedian: local, ratio: deviation })
       else kept.push(row)
     }
   }

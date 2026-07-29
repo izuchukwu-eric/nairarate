@@ -2,6 +2,7 @@ import type { Context } from 'hono'
 
 import { CURRENCIES, CURRENCY_CODES } from '../config/currencies'
 import { PRICE_HISTORY, PRICE_RATES, resolveNetwork, CAIP2 } from '../payment/x402'
+import { HISTORY_TIERS, MAX_DAYS, describeHistoryTiers } from '../config/pricing'
 import type { Env } from '../types/rates'
 
 /**
@@ -82,6 +83,14 @@ export function wellKnownX402Handler(c: Context<{ Bindings: Env }>): Response {
           path: '/v1/rates/history',
           method: 'GET',
           price: PRICE_HISTORY,
+          price_note: `Ceiling. Charged by window size: ${describeHistoryTiers()}.`,
+          pricing_tiers: HISTORY_TIERS.map((t) => ({
+            up_to_days: t.maxDays,
+            settles: t.usd,
+            base_units: t.amount,
+          })),
+          scheme_note:
+            '`upto` settles by tier; `exact` settles the cap regardless of window.',
           network,
           schemes: ['upto', 'exact'],
           description:
@@ -90,7 +99,7 @@ export function wellKnownX402Handler(c: Context<{ Bindings: Env }>): Response {
           parameters: {
             currency: 'Required.',
             market: 'Required: official, parallel, or crypto_street.',
-            days: 'Optional 1-30. Default 7.',
+            days: `Optional 1-${MAX_DAYS}. Default 7. Determines the amount settled.`,
           },
         },
       ],
@@ -150,10 +159,16 @@ GET /health                 Free. Per-source freshness. Check before paying.
 GET /v1/rates               ${PRICE_RATES}. All markets and currencies, spreads, 7-day trends.
                             ?currencies=USD,USDT   optional filter
                             ?markets=official|parallel|crypto_street|all
-GET /v1/rates/history       ${PRICE_HISTORY}. Daily series for one currency and market.
+GET /v1/rates/history       up to ${PRICE_HISTORY}. Daily series for one currency and market.
                             ?currency=USD (required)
                             ?market=official|parallel|crypto_street (required)
-                            ?days=1..30 (default 7)
+                            ?days=1..${MAX_DAYS} (default 7)
+
+  Pricing scales with the window, via the \`upto\` scheme:
+    ${describeHistoryTiers()}
+  The amount settled is echoed in the x-settlement-usd response header.
+  Paying with \`exact\` instead settles the ${PRICE_HISTORY} cap regardless of window —
+  \`exact\` is offered only because it is more widely implemented.
 GET /.well-known/x402       Free. Machine-readable manifest.
 GET /methodology            Free. How the rates are derived and screened.
 

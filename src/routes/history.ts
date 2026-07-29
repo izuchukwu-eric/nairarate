@@ -1,13 +1,13 @@
 import type { Context } from 'hono'
+import { setSettlementOverrides } from '@x402/hono'
 
 import { getDailySeries } from '../cache/d1'
 import { summariseTrend } from '../compute/trend'
 import { getCurrency } from '../config/currencies'
+import { DEFAULT_DAYS, MAX_DAYS, settlementTierForDays } from '../config/pricing'
 import type { Env, HistoryResponse, HistorySnapshot, Market } from '../types/rates'
 
 const MARKETS: readonly Market[] = ['official', 'parallel', 'crypto_street']
-const MAX_DAYS = 30
-const DEFAULT_DAYS = 7
 
 /**
  * GET /v1/rates/history — x402 gated.
@@ -17,20 +17,16 @@ const DEFAULT_DAYS = 7
  * series begin accumulating from the first daily roll-up after deploy, and the
  * response note says which it gave you.
  *
- * TODO(pricing): this route advertises both `upto` and `exact` at a flat
- * PRICE_HISTORY (see buildRoutes in src/payment/x402.ts). Flat is intentional for
- * v1. To charge proportionally to the `days` requested — the reason `upto` is
- * advertised at all — import `setSettlementOverrides` from '@x402/hono' and call
- * it here once `days` is known but before returning:
+ * Pricing is tiered by window size. The route advertises `upto` at the cap
+ * (PRICE_HISTORY) and declares the actual amount at settlement via
+ * `setSettlementOverrides`, so a caller asking for a week is not charged for a
+ * year — see HISTORY_TIERS in src/config/pricing.ts.
  *
- *   import { setSettlementOverrides } from '@x402/hono'
- *   setSettlementOverrides(c, { amount: <actual charge, asset base units> })
- *
- * `upto` authorises up to the advertised maximum and settles whatever the server
- * declares, so without that call it always settles the full advertised max. The
- * scheme server is already registered for both networks, so this is the only
- * change needed. Note `amount` is in the asset's base units — USDC has 6 decimals, so
- * $0.05 is "50000".
+ * Partial settlement exists only in `upto`. A client that picks `exact` from
+ * `accepts` settles the full cap regardless of `days`, because `exact` authorises
+ * and captures the same amount. `exact` is still offered because it is far more
+ * widely implemented, and the tier table is published on every surface that quotes
+ * the price so the trade-off is visible before paying rather than after.
  */
 export async function historyHandler(c: Context<{ Bindings: Env }>): Promise<Response> {
   const currencyParam = c.req.query('currency')
@@ -136,7 +132,18 @@ export async function historyHandler(c: Context<{ Bindings: Env }>): Promise<Res
   }
   if (notes.length > 0) body.note = notes.join(' ')
 
-  return c.json(body, 200, { 'cache-control': 'public, max-age=300' })
+  // Declare the tiered amount before returning. Only meaningful for `upto`; the
+  // middleware reads this off the response and settles that amount instead of the
+  // authorised cap. Set only on the 200 path — a 4xx cancels the payment entirely,
+  // so there is nothing to reduce.
+  const tier = settlementTierForDays(days.value)
+  setSettlementOverrides(c, { amount: tier.amount })
+
+  return c.json(body, 200, {
+    'cache-control': 'public, max-age=300',
+    // Echo the charge so a caller can reconcile without decoding the receipt.
+    'x-settlement-usd': tier.usd,
+  })
 }
 
 function parseDays(raw: string | undefined): { value: number } | { error: string } {

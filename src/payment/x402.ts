@@ -36,6 +36,7 @@ import {
 } from '@x402/extensions/bazaar'
 
 import { CURRENCY_CODES } from '../config/currencies'
+import { MAX_DAYS, describeHistoryTiers } from '../config/pricing'
 import type { Env } from '../types/rates'
 
 export type X402Network = 'base' | 'base-sepolia'
@@ -89,13 +90,14 @@ export function resolveNetwork(env: Env): X402Network {
  * the spec. This gives a human or a non-x402 client something actionable, without
  * restating the `accepts` array, which would only drift from the header.
  */
-function unpaidBody(endpoint: string, price: string, network: Network) {
+function unpaidBody(endpoint: string, price: string, network: Network, pricingNote?: string) {
   return () => ({
     contentType: 'application/json',
     body: {
       error: 'payment_required',
       message: `${endpoint} costs ${price} per call, paid in USDC via the x402 protocol.`,
       price,
+      ...(pricingNote ? { pricing: pricingNote } : {}),
       network,
       how: 'Read the PAYMENT-REQUIRED response header for the payment requirements, ' +
         'or use an x402-capable client which handles this automatically.',
@@ -161,7 +163,7 @@ const HISTORY_DISCOVERY = declareDiscoveryExtension({
     properties: {
       currency: { type: 'string', description: `One of: ${CURRENCY_CODES.join(', ')}.` },
       market: { type: 'string', description: 'official, parallel, or crypto_street.' },
-      days: { type: 'integer', description: '1-30. Default 7.' },
+      days: { type: 'integer', description: `1-${MAX_DAYS}. Default 7. Charge scales with this.` },
     },
     required: ['currency', 'market'],
   },
@@ -211,10 +213,18 @@ export function buildRoutes(payTo: string, network: Network): RoutesConfig {
         { scheme: 'upto', payTo, price: PRICE_HISTORY, network },
         { scheme: 'exact', payTo, price: PRICE_HISTORY, network },
       ],
-      unpaidResponseBody: unpaidBody('GET /v1/rates/history', PRICE_HISTORY, network),
+      unpaidResponseBody: unpaidBody(
+        'GET /v1/rates/history',
+        `up to ${PRICE_HISTORY}`,
+        network,
+        `Charged by window size with the \`upto\` scheme: ${describeHistoryTiers()}. ` +
+          `Paying with \`exact\` settles the ${PRICE_HISTORY} cap regardless of window.`,
+      ),
       description:
         'Daily historical Nigerian FX rate series by currency and market, with trend, high and low. ' +
-        'Official series reach back to 2001.',
+        `Official series reach back to 2001; up to ${MAX_DAYS} days per call. ` +
+        `Priced by window size via the \`upto\` scheme: ${describeHistoryTiers()}. ` +
+        `Paying with \`exact\` settles the ${PRICE_HISTORY} cap regardless of window.`,
       mimeType: 'application/json',
       serviceName: 'nairarate.dev',
       tags: ['fx', 'nigeria', 'ngn', 'historical', 'time-series'],

@@ -2,6 +2,7 @@ import type { Context } from 'hono'
 
 import { CURRENCIES, CURRENCY_CODES } from '../config/currencies'
 import { PRICE_HISTORY, PRICE_RATES, resolveNetwork, CAIP2 } from '../payment/x402'
+import { HISTORY_TIERS, MAX_DAYS, describeHistoryTiers } from '../config/pricing'
 import type { Env } from '../types/rates'
 
 /**
@@ -125,15 +126,30 @@ export function openApiHandler(c: Context<{ Bindings: Env }>): Response {
       },
       '/v1/rates/history': {
         get: {
-          summary: `Daily historical series. ${PRICE_HISTORY} per call.`,
+          summary: `Daily historical series. Up to ${PRICE_HISTORY} per call, priced by window.`,
           description:
             `Paid via x402 in USDC on ${network}. Advertises both \`upto\` and \`exact\` — the ` +
-            'client picks. Official series reach back to 2001-12-10; parallel and street series ' +
-            'accumulate from this deployment and are shallower.',
+            'client picks.\n\n' +
+            `**Pricing scales with \`days\`** (\`upto\` scheme): ${describeHistoryTiers()}. ` +
+            `The amount actually settled is declared at settlement, and echoed in the ` +
+            `\`x-settlement-usd\` response header.\n\n` +
+            `A client paying with \`exact\` settles the ${PRICE_HISTORY} cap regardless of window, ` +
+            'because `exact` captures exactly what it authorised. `exact` is offered because it ' +
+            'is far more widely implemented.\n\n' +
+            `Official series reach back to 2001-12-10, up to ${MAX_DAYS} days per call; parallel ` +
+            'and street series are shallower (deepest: USDT ~956 days, USD ~719).',
           parameters: [
             { name: 'currency', in: 'query', required: true, schema: { type: 'string', enum: [...CURRENCY_CODES] } },
             { name: 'market', in: 'query', required: true, schema: { type: 'string', enum: [...MARKETS] } },
-            { name: 'days', in: 'query', required: false, schema: { type: 'integer', minimum: 1, maximum: 30, default: 7 } },
+            {
+              name: 'days',
+              in: 'query',
+              required: false,
+              description:
+                `1-${MAX_DAYS}. Default 7. **Determines the amount settled** — see the ` +
+                'endpoint description for the tier table.',
+              schema: { type: 'integer', minimum: 1, maximum: MAX_DAYS, default: 7 },
+            },
           ],
           responses: {
             '200': { description: 'Series.', content: { 'application/json': { schema: { $ref: '#/components/schemas/HistoryResponse' } } } },
@@ -281,6 +297,15 @@ export function openApiHandler(c: Context<{ Bindings: Env }>): Response {
           },
           required: ['currency', 'market', 'days', 'snapshots', 'trend'],
         },
+      },
+    },
+    'x-pricing': {
+      '/v1/rates': { scheme: 'exact', price: PRICE_RATES },
+      '/v1/rates/history': {
+        cap: PRICE_HISTORY,
+        scheme_note:
+          '`upto` settles by tier; `exact` settles the cap regardless of window.',
+        tiers: HISTORY_TIERS.map((t) => ({ up_to_days: t.maxDays, settles: t.usd, base_units: t.amount })),
       },
     },
     'x-coverage': CURRENCIES.map((cur) => ({
