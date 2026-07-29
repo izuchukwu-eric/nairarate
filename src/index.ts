@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { paymentMiddleware } from '@x402/hono'
 
-import { setupX402 } from './payment/x402'
+import { PRICE_HISTORY, PRICE_RATES, setupX402 } from './payment/x402'
 import type { X402Setup } from './payment/x402'
 import { syncCbn } from './jobs/sync-cbn'
 import { syncMonierate } from './jobs/sync-monierate'
@@ -34,8 +34,8 @@ app.get('/', (c) =>
       'paid per call via x402 in USDC on Base.',
     endpoints: {
       'GET /health': 'Source freshness. Free.',
-      'GET /v1/rates': 'All markets, all currencies. $0.002.',
-      'GET /v1/rates/history': 'Daily historical series. $0.01.',
+      'GET /v1/rates': `All markets, all currencies. ${PRICE_RATES}.`,
+      'GET /v1/rates/history': `Daily historical series. ${PRICE_HISTORY}.`,
     },
     conventions: {
       base: 'NGN — every rate is naira per unit of the quoted currency.',

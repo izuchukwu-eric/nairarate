@@ -395,7 +395,7 @@ ENVIRONMENT = "production"
 ```
 
 Secrets (set via `wrangler secret put`):
-- `MONIERATE_API_KEY` — Monierate API key. Local value lives in `.dev.vars` (gitignored); never inline it here.
+- `MONIERATE_API_KEY` 
 - `X402_WALLET_ADDRESS` — your USDC wallet on Base that receives payments
 
 ---

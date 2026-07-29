@@ -17,20 +17,20 @@ const DEFAULT_DAYS = 7
  * series begin accumulating from the first daily roll-up after deploy, and the
  * response note says which it gave you.
  *
- * TODO(pricing): this route advertises both `upto` and `exact` at a flat $0.01
- * (see buildRoutes in src/payment/x402.ts). Flat is intentional for v1. To charge
- * proportionally to the `days` requested — the reason `upto` is advertised at all
- * — import `setSettlementOverrides` from '@x402/hono' and call it here once
- * `days` is known but before returning:
+ * TODO(pricing): this route advertises both `upto` and `exact` at a flat
+ * PRICE_HISTORY (see buildRoutes in src/payment/x402.ts). Flat is intentional for
+ * v1. To charge proportionally to the `days` requested — the reason `upto` is
+ * advertised at all — import `setSettlementOverrides` from '@x402/hono' and call
+ * it here once `days` is known but before returning:
  *
  *   import { setSettlementOverrides } from '@x402/hono'
  *   setSettlementOverrides(c, { amount: <actual charge, asset base units> })
  *
  * `upto` authorises up to the advertised maximum and settles whatever the server
- * declares, so without that call it always settles the full $0.01. The scheme
- * server is already registered for both networks, so this is the only change
- * needed. Note `amount` is in the asset's base units — USDC has 6 decimals, so
- * $0.01 is "10000".
+ * declares, so without that call it always settles the full advertised max. The
+ * scheme server is already registered for both networks, so this is the only
+ * change needed. Note `amount` is in the asset's base units — USDC has 6 decimals, so
+ * $0.05 is "50000".
  */
 export async function historyHandler(c: Context<{ Bindings: Env }>): Promise<Response> {
   const currencyParam = c.req.query('currency')

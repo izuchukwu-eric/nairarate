@@ -160,7 +160,7 @@ curl -sD - -o /dev/null https://<worker-subdomain>.workers.dev/v1/rates \
   | grep -i '^payment-required:' | cut -d' ' -f2 | base64 -d | jq '.accepts'
 ```
 
-**Verify:** `network: "eip155:84532"`, `amount: "2000"`,
+**Verify:** `network: "eip155:84532"`, `amount: "30000"` ($0.03 at 6 decimals),
 `asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e"`, `payTo` = your address.
 
 Then make a **real Sepolia payment** with an x402 client and confirm a 200 with
@@ -225,7 +225,7 @@ curl -sD - -o /dev/null https://nairarate.dev/v1/rates \
 
 ## 10. One real mainnet settlement
 
-Pay **$0.002 of real USDC** on Base for one `/v1/rates` call with an x402 client.
+Pay **$0.03 of real USDC** on Base for one `/v1/rates` call with an x402 client.
 
 **Verify all four:**
 
@@ -236,7 +236,7 @@ Pay **$0.002 of real USDC** on Base for one `/v1/rates` call with an x402 client
    address still confirms.
 
 Then repeat once for `/v1/rates/history?currency=USD&market=official&days=7`
-at $0.01, which exercises the `upto` path.
+at $0.05, which exercises the `upto` path.
 
 **Only after all of this is green does anything get submitted anywhere.**
 See [DISTRIBUTION.md](DISTRIBUTION.md).

@@ -63,8 +63,15 @@ export const FACILITATORS: Record<X402Network, readonly string[]> = {
   'base-sepolia': ['https://x402.org/facilitator', 'https://facilitator.payai.network'],
 }
 
-export const PRICE_RATES = '$0.002'
-export const PRICE_HISTORY = '$0.01'
+/**
+ * Prices, in USD. The only place these are defined — the 402 challenge, the
+ * discovery manifest, llms.txt, the OpenAPI spec and the root route all read
+ * these constants, so a change here propagates everywhere with no drift.
+ *
+ * USDC has 6 decimals, so the challenge reports $0.03 as amount "30000".
+ */
+export const PRICE_RATES = '$0.03'
+export const PRICE_HISTORY = '$0.05'
 
 export function resolveNetwork(env: Env): X402Network {
   const raw = env.X402_NETWORK?.trim().toLowerCase()
@@ -172,8 +179,8 @@ const HISTORY_DISCOVERY = declareDiscoveryExtension({
 /**
  * Build the route payment requirements.
  *
- * `/v1/rates` takes `exact` alone — the price is a flat $0.002 and every x402
- * client implements `exact`.
+ * `/v1/rates` takes `exact` alone — the price is flat and every x402 client
+ * implements `exact`.
  *
  * `/v1/rates/history` advertises **both** `upto` and `exact`. `accepts` is an
  * array and the client picks, so `upto` is available for usage-based pricing later

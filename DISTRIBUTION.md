@@ -65,7 +65,7 @@ Draft entry:
   freshness-based confidence score. Parallel rates are aggregated from 40+
   changers with the central bank and reference feeds screened out (see
   [methodology](https://nairarate.dev/methodology)); official series reach back to
-  2001. 15 currencies. $0.002/call for live rates, $0.01 for historical, USDC on
+  2001. 15 currencies. $0.03/call for live rates, $0.05 for historical, USDC on
   Base. No API keys, no signup. Free `/health` for source freshness before you pay.
 ```
 
@@ -100,7 +100,7 @@ parallel, and USDT/USDC street price — plus the spreads between them.
 Today: official ₦1365.53, parallel ₦1392.80. A 2.0% spread that no
 mainstream FX API shows you.
 
-$0.002 per call in USDC on Base via x402. No API key, no signup.
+$0.03 per call in USDC on Base via x402. No API key, no signup.
 
   curl https://nairarate.dev/v1/rates
 
@@ -118,6 +118,6 @@ Notes:
   reader can run immediately, with no wallet and no signup.
 - Follow-up post, once there is a week of history: the 7-day spread trend. A chart
   of `parallel_vs_official_pct` over time is the thing nobody else can publish, and
-  it advertises `/history` (the $0.01 endpoint) rather than the $0.002 one.
+  it advertises `/history` (the $0.05 endpoint) rather than the $0.03 one.
 - Worth a mention in the thread, not the main post: the 24-year official backfill.
   It is a strong credibility signal but a weak hook.
