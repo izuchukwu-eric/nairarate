@@ -1,4 +1,4 @@
-import { insertSnapshots } from '../cache/d1'
+import { insertSnapshots, rollUpSnapshots } from '../cache/d1'
 import {
   getWalletBalanceNgn,
   markSourceError,
@@ -14,6 +14,11 @@ import {
 } from '../collectors/monierate'
 import { rebuildRatesPayload } from './rebuild-payload'
 import type { Env } from '../types/rates'
+
+/** Today in UTC, 'YYYY-MM-DD'. */
+function todayUtc(now: Date): string {
+  return now.toISOString().slice(0, 10)
+}
 
 /**
  * Minimum wallet balance, NGN, before billable fallbacks are switched off.
@@ -87,12 +92,28 @@ export async function syncMonierate(env: Env): Promise<void> {
       result.payload.fetchedAt,
     )
 
-    // Rebuild the served payload here so /v1/rates stays a single KV read.
+    // Roll today's snapshots into the daily series on every run, not just once a
+    // day. The composite primary key makes this idempotent, so each run simply
+    // refreshes the partial row for today and the CBN cron finalises yesterday.
+    //
+    // Without this, a freshly deployed instance has no parallel daily rows at all
+    // until the following 07:00 UTC — meaning /v1/rates/history?market=parallel
+    // returns nothing, and trend_7d.parallel_direction stays null, for up to a day.
+    let rolled = 0
+    try {
+      rolled = await rollUpSnapshots(env, 'monierate', todayUtc(now))
+    } catch (err: unknown) {
+      // Non-fatal: the served payload matters more than the history roll-up.
+      console.error('sync-monierate: daily roll-up failed', err)
+    }
+
+    // Rebuild after the roll-up so trend_7d sees today's row in the same run.
     await rebuildRatesPayload(env, now)
 
     console.log(
       `sync-monierate: ${Object.keys(result.payload.rates).length} currencies, ` +
-        `${written} snapshot(s), ${result.fallbacksUsed}/${MAX_FALLBACK_CALLS} billable fallback(s)` +
+        `${written} snapshot(s), ${rolled} daily row(s) rolled, ` +
+        `${result.fallbacksUsed}/${MAX_FALLBACK_CALLS} billable fallback(s)` +
         (result.failed.length > 0
           ? `, ${result.failed.length} ticker failure(s): ${result.failed.map((f) => f.ticker).join(', ')}`
           : ''),

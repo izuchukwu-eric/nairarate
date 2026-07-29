@@ -87,6 +87,35 @@ export async function historyHandler(c: Context<{ Bindings: Env }>): Promise<Res
     mid: r.mid,
   }))
 
+  // An empty series is a 400, not a 200 with an empty array.
+  //
+  // This is what stops a caller paying for nothing: the x402 middleware checks the
+  // handler's status after next() and, for anything >= 400, cancels the verified
+  // payment instead of settling it. A 200 carrying `snapshots: []` would charge the
+  // full price for no data. The explanation still travels in the body.
+  if (snapshots.length === 0) {
+    const reason =
+      market === 'official'
+        ? 'CBN publishes on weekdays only, and not on Nigerian public holidays. Widen `days`.'
+        : 'Parallel and street series accumulate from this deployment\'s daily roll-up, so they ' +
+          'are shallower than the official series, which reaches back to 2001-12-10. Widen `days` ' +
+          'or use market=official.'
+
+    return c.json(
+      {
+        error: 'no_data_in_window',
+        message:
+          `No ${market} rows for ${def.code} in the last ${days.value} day(s). ${reason} ` +
+          'You have not been charged for this request.',
+        currency: def.code,
+        market,
+        days: days.value,
+        ...(def.note ? { note: def.note } : {}),
+      },
+      400,
+    )
+  }
+
   const body: HistoryResponse = {
     currency: def.code,
     market,
@@ -102,14 +131,7 @@ export async function historyHandler(c: Context<{ Bindings: Env }>): Promise<Res
 
   const notes: string[] = []
   if (def.note) notes.push(def.note)
-  if (snapshots.length === 0) {
-    notes.push(
-      market === 'official'
-        ? 'No official rows in this window. CBN does not publish on weekends or Nigerian public holidays.'
-        : 'No rows in this window yet. Parallel and street series accumulate from the daily ' +
-          'roll-up, so a freshly deployed instance has less history than the official series.',
-    )
-  } else if (trend.points < 2) {
+  if (trend.points < 2) {
     notes.push('Only one day of data in this window, so no direction or change could be computed.')
   }
   if (notes.length > 0) body.note = notes.join(' ')

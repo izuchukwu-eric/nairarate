@@ -101,7 +101,9 @@ export default {
    * Cron dispatch.
    *
    * Both triggers arrive at this one handler, so it switches on the cron
-   * expression. These must stay in sync with `[triggers].crons` in wrangler.toml.
+   * expression. These strings must match `[triggers].crons` in wrangler.toml
+   * exactly — a mismatch means that sync silently never runs, so the default case
+   * logs loudly rather than failing quietly.
    */
   async scheduled(event: ScheduledController, env: Env): Promise<void> {
     // Awaited, not waitUntil'd: a scheduled invocation already lives until its
@@ -110,7 +112,7 @@ export default {
       case '*/15 * * * *':
         await syncMonierate(env)
         break
-      case '0 7 * * 1-5':
+      case '0 7,12 * * 1-5':
         await syncCbn(env)
         break
       default:

@@ -17,9 +17,17 @@ database_name = "nairarate"
 database_id = "4bc7660c-89b9-44c8-8b63-5c06a6665a01"
 
 [triggers]
-# */15 * * * *  -> Monierate sync (parallel + crypto street)
-# 0 7 * * 1-5   -> CBN sync (official) + intraday prune, 07:00 UTC = 08:00 Lagos
-crons = ["*/15 * * * *", "0 7 * * 1-5"]
+# */15 * * * *   -> Monierate sync (parallel + crypto street) + daily roll-up
+# 0 7,12 * * 1-5 -> CBN sync (official) + roll-up + prune
+#
+# Twice daily, not once: CBN publishes around 07:00 UTC but not reliably before it.
+# With a single 07:00 trigger, a late publication was not collected until 07:00 the
+# next day, serving day-old official rates for ~24h on a product whose whole claim
+# is rate accuracy. The second pass at 12:00 UTC costs nothing — CBN is free.
+#
+# These strings are matched exactly by the `scheduled` handler in src/index.ts.
+# Changing one without the other silently stops a sync from ever running.
+crons = ["*/15 * * * *", "0 7,12 * * 1-5"]
 
 [vars]
 ENVIRONMENT = "production"

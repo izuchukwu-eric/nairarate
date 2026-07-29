@@ -139,8 +139,10 @@ export function openApiHandler(c: Context<{ Bindings: Env }>): Response {
             '200': { description: 'Series.', content: { 'application/json': { schema: { $ref: '#/components/schemas/HistoryResponse' } } } },
             '400': {
               description:
-                'Missing or invalid parameter, or a currency/market combination with no source ' +
-                '(the message says which). Returned instead of an empty result you paid for.',
+                'Missing or invalid parameter, a currency/market combination with no source, or ' +
+                'no rows in the requested window (the message says which). **No payment is ' +
+                'settled on a 4xx** — the verified payment is cancelled rather than captured, so ' +
+                'you are never charged for an empty result.',
               content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
             },
             '402': { $ref: '#/components/responses/PaymentRequired' },

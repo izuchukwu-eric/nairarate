@@ -163,9 +163,11 @@ Official + parallel:  ${withParallel.join(', ')}
 Stablecoin street:    ${street.join(', ')}
 Official only:        ${officialOnly.join(', ')}
 
-Requesting a market a currency does not carry returns 400 with an explanation
-rather than an empty result you paid for. Currencies without a counterpart market
-report null for that market and a null spread — never a fabricated value.
+Requesting a market a currency does not carry — or a window with no rows —
+returns 400 with an explanation. No payment is settled on a 4xx: the verified
+payment is cancelled rather than captured, so you are never charged for an empty
+result. Currencies without a counterpart market report null for that market and a
+null spread — never a fabricated value.
 
 Official history reaches back to 2001-12-10. Parallel and street history
 accumulates from this deployment's first daily roll-up, so it is shallower.
