@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { paymentMiddleware } from '@x402/hono'
 
-import { PRICE_HISTORY, PRICE_RATES, setupX402 } from './payment/x402'
+import { PRICE_HISTORY, PRICE_RATES, enrichPermit2Response, setupX402 } from './payment/x402'
 import type { X402Setup } from './payment/x402'
 import { syncCbn } from './jobs/sync-cbn'
 import { syncMonierate } from './jobs/sync-monierate'
@@ -81,7 +81,18 @@ app.use('/v1/*', async (c, next) => {
     )
   }
 
-  return paymentMiddleware(x402.routes, x402.server)(c, next)
+  const result = await paymentMiddleware(x402.routes, x402.server)(c, next)
+
+  // The middleware may return a Response or set c.res; handle both.
+  const res = result ?? c.res
+
+  // 412 is the SDK's permit2_allowance_required, and it ships an empty body.
+  // Replace it with an actionable one — see enrichPermit2Response.
+  if (res && res.status === 412) {
+    return enrichPermit2Response(res, x402.caip2)
+  }
+
+  return result
 })
 
 app.get('/v1/rates', ratesHandler)

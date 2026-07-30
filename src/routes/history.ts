@@ -1,10 +1,12 @@
 import type { Context } from 'hono'
 import { setSettlementOverrides } from '@x402/hono'
+import { decodePaymentSignatureHeader } from '@x402/core/http'
 
 import { getDailySeries } from '../cache/d1'
 import { summariseTrend } from '../compute/trend'
 import { getCurrency } from '../config/currencies'
 import { DEFAULT_DAYS, MAX_DAYS, settlementTierForDays } from '../config/pricing'
+import { PRICE_HISTORY } from '../payment/x402'
 import type { Env, HistoryResponse, HistorySnapshot, Market } from '../types/rates'
 
 const MARKETS: readonly Market[] = ['official', 'parallel', 'crypto_street']
@@ -132,18 +134,44 @@ export async function historyHandler(c: Context<{ Bindings: Env }>): Promise<Res
   }
   if (notes.length > 0) body.note = notes.join(' ')
 
-  // Declare the tiered amount before returning. Only meaningful for `upto`; the
-  // middleware reads this off the response and settles that amount instead of the
-  // authorised cap. Set only on the 200 path — a 4xx cancels the payment entirely,
-  // so there is nothing to reduce.
+  // Declare the tiered amount — but only when the caller actually paid with `upto`.
+  //
+  // An override rewrites `requirements.amount` before settlement. On `exact` that
+  // would ask the facilitator to settle a different amount than the payload
+  // authorised, which is not what `exact` means and would either be rejected or
+  // settle wrongly. The scheme the client chose is in the X-PAYMENT payload's
+  // `accepted` requirements, so read it rather than assuming.
   const tier = settlementTierForDays(days.value)
-  setSettlementOverrides(c, { amount: tier.amount })
+  const paidScheme = detectPaidScheme(c)
+
+  if (paidScheme === 'upto') {
+    setSettlementOverrides(c, { amount: tier.amount })
+  }
 
   return c.json(body, 200, {
     'cache-control': 'public, max-age=300',
-    // Echo the charge so a caller can reconcile without decoding the receipt.
-    'x-settlement-usd': tier.usd,
+    // What was actually charged, so a caller can reconcile without decoding the
+    // receipt. `exact` settles the advertised cap; only `upto` gets the tier.
+    'x-settlement-usd': paidScheme === 'upto' ? tier.usd : PRICE_HISTORY,
+    'x-settlement-scheme': paidScheme ?? 'unknown',
   })
+}
+
+/**
+ * Which scheme the caller paid with, from the X-PAYMENT header.
+ *
+ * Returns null when the header is absent or unparseable — in which case no
+ * override is applied, which is the safe direction: the caller settles the
+ * advertised amount rather than an amount their scheme may not support.
+ */
+function detectPaidScheme(c: Context<{ Bindings: Env }>): string | null {
+  const header = c.req.header('x-payment')
+  if (!header) return null
+  try {
+    return decodePaymentSignatureHeader(header).accepted?.scheme ?? null
+  } catch {
+    return null
+  }
 }
 
 function parseDays(raw: string | undefined): { value: number } | { error: string } {

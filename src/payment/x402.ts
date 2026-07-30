@@ -209,22 +209,35 @@ export function buildRoutes(payTo: string, network: Network): RoutesConfig {
       extensions: RATES_DISCOVERY,
     },
     'GET /v1/rates/history': {
+      // ORDER MATTERS. `exact` first, deliberately.
+      //
+      // `upto` settles through Permit2, which requires the payer to have granted a
+      // one-time ERC20 approval to the Permit2 contract. Without it the server
+      // answers 412 permit2_allowance_required and no payment happens. Clients
+      // generally take the first scheme they support, so listing `upto` first made
+      // the common path fail for any payer who had never used Permit2.
+      //
+      // `exact` therefore leads: it works first try for every client and settles the
+      // flat cap. `upto` stays available second for callers who have the approval
+      // and want the window-based tiers.
       accepts: [
-        { scheme: 'upto', payTo, price: PRICE_HISTORY, network },
         { scheme: 'exact', payTo, price: PRICE_HISTORY, network },
+        { scheme: 'upto', payTo, price: PRICE_HISTORY, network },
       ],
       unpaidResponseBody: unpaidBody(
         'GET /v1/rates/history',
         `up to ${PRICE_HISTORY}`,
         network,
-        `Charged by window size with the \`upto\` scheme: ${describeHistoryTiers()}. ` +
-          `Paying with \`exact\` settles the ${PRICE_HISTORY} cap regardless of window.`,
+        `\`exact\` (listed first, needs no setup): flat ${PRICE_HISTORY} whatever the window. ` +
+          `\`upto\` (requires a one-time Permit2 approval from the payer): priced by ` +
+          `window — ${describeHistoryTiers()}.`,
       ),
       description:
         'Daily historical Nigerian FX rate series by currency and market, with trend, high and low. ' +
         `Official series reach back to 2001; up to ${MAX_DAYS} days per call. ` +
-        `Priced by window size via the \`upto\` scheme: ${describeHistoryTiers()}. ` +
-        `Paying with \`exact\` settles the ${PRICE_HISTORY} cap regardless of window.`,
+        `Default \`exact\` settles a flat ${PRICE_HISTORY} and needs no setup. The ` +
+        `\`upto\` scheme prices by window instead — ${describeHistoryTiers()} — but ` +
+        'requires a one-time Permit2 approval from the payer.',
       mimeType: 'application/json',
       serviceName: 'nairarate.dev',
       tags: ['fx', 'nigeria', 'ngn', 'historical', 'time-series'],
@@ -250,6 +263,59 @@ export function buildResourceServer(network: Network, facilitatorUrls: readonly 
     // Enriches the per-route Bazaar declarations with method and route template at
     // request time, and is what makes the routes discoverable to indexers.
     .registerExtension(bazaarResourceServerExtension)
+}
+
+/**
+ * The canonical Permit2 contract, identical on every EVM chain including Base.
+ * Exported by @x402/evm as PERMIT2_ADDRESS; inlined here so the discovery surface
+ * does not pull a client-side module into the Worker bundle.
+ */
+export const PERMIT2_ADDRESS = '0x000000000022D473030F116dDEE9F6B43aC78BA3'
+
+/**
+ * Replace the SDK's empty 412 body with something a caller can act on.
+ *
+ * A 412 means `permit2_allowance_required`: the caller chose `upto`, which settles
+ * through Permit2, and their payer has never approved the Permit2 contract to move
+ * its USDC. The SDK returns `{}` for this — technically the details are in the
+ * PAYMENT-REQUIRED header, but a bare `{}` on an unfamiliar status code tells a
+ * developer nothing, and the fix is not guessable.
+ *
+ * The original headers are preserved; only the body is rewritten.
+ */
+export function enrichPermit2Response(res: Response, network: Network): Response {
+  const headers = new Headers(res.headers)
+  headers.set('content-type', 'application/json')
+
+  const body = {
+    error: 'permit2_allowance_required',
+    explanation:
+      'You paid with the `upto` scheme, which settles through Permit2 — a shared approval ' +
+      'contract that lets a payer authorise token transfers once and then sign per-payment ' +
+      'permits offline. Your payer has not yet approved Permit2 to move its USDC, so nothing ' +
+      'could be settled. You have not been charged.',
+    next_step:
+      'Either (a) pay with the `exact` scheme instead, which needs no approval and is listed ' +
+      'first in `accepts` — most clients pick it automatically; or (b) grant the one-time ' +
+      'approval and retry with `upto`. Build the approval transaction with ' +
+      '`createPermit2ApprovalTx` from @x402/evm, send it from the payer, then retry. It costs ' +
+      'gas once and never needs repeating.',
+    permit2_address: PERMIT2_ADDRESS,
+    network,
+    schemes: {
+      exact: {
+        cost: PRICE_HISTORY,
+        note: 'Flat, regardless of `days`. No approval needed. Recommended.',
+      },
+      upto: {
+        cost: `up to ${PRICE_HISTORY}, by window: ${describeHistoryTiers()}`,
+        note: 'Cheaper for small windows, but requires the Permit2 approval above.',
+      },
+    },
+    docs: 'https://nairarate.dev/llms.txt',
+  }
+
+  return new Response(JSON.stringify(body), { status: res.status, headers })
 }
 
 export interface X402Setup {

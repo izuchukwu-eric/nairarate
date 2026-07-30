@@ -11,6 +11,9 @@
  *
  * Flags:
  *   --mainnet         Base mainnet (eip155:8453). Omit for Sepolia.
+ *   --exact-only      Register only ExactEvmScheme, i.e. behave like the many
+ *                     clients that do not implement `upto`. Proves the default
+ *                     path never hits a Permit2 412.
  *   --url=ORIGIN      Target origin (default https://nairarate.dev)
  *   --days=N          Call /v1/rates/history?days=N instead of /v1/rates.
  *                     Exercises the `upto` tiering — 1-7d $0.01 … 91-365d $0.05.
@@ -27,9 +30,10 @@
  * - The signer is built from an account plus a **public** client, not a wallet
  *   client. The public client is what allows on-chain reads for EIP-2612 /
  *   approval enrichment.
- * - Both `exact` and `upto` are registered. This matters: /v1/rates/history
- *   advertises both, and a client that only registers `exact` settles the $0.05 cap
- *   regardless of `days`. Registering `upto` is what makes the tiering apply.
+ * - Both schemes are registered by default. /v1/rates/history advertises `exact`
+ *   first (no setup) and `upto` second (window-based tiers, but settles via Permit2
+ *   and so needs a one-time payer approval). Registering `upto` is what makes the
+ *   tiering apply; `--exact-only` simulates the many clients that do not.
  * - The settlement receipt is in the **`PAYMENT-RESPONSE`** header. `X-PAYMENT-RESPONSE`
  *   exists in the SDK only on v1 compatibility paths and reads null on a v2
  *   payment that in fact succeeded.
@@ -88,16 +92,22 @@ async function main(): Promise<void> {
   const signer = toClientEvmSigner(account, publicClient)
   const network = `eip155:${chain.id}` as const
 
-  const client = new x402Client()
-    .register(network, new ExactEvmScheme(signer))
-    // Without this, /v1/rates/history settles the cap instead of the tiered amount.
-    .register(network, new UptoEvmScheme(signer))
+  const exactOnly = process.argv.includes('--exact-only')
+
+  const client = new x402Client().register(network, new ExactEvmScheme(signer))
+  if (!exactOnly) {
+    // `upto` enables the window-based tiers on /v1/rates/history, but settles via
+    // Permit2 and so needs a one-time approval from the payer. Without this
+    // registration the client simply takes `exact`, which is listed first.
+    client.register(network, new UptoEvmScheme(signer))
+  }
 
   const rpc = chain.rpcUrls.default.http[0]!
   const token = USDC[chain.id as keyof typeof USDC]
 
   console.log(`\n  network   ${chain.name} (${network})${mainnet ? '  *** REAL MONEY ***' : ''}`)
   console.log(`  payer     ${account.address}`)
+  console.log(`  schemes   ${exactOnly ? 'exact only (--exact-only)' : 'exact + upto'}`)
   console.log(`  target    ${origin}${path}`)
 
   const payerBefore = await usdcBalance(rpc, token, account.address)
