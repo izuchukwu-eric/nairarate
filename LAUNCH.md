@@ -1,6 +1,6 @@
 # Launch
 
-Numbers below were pulled **2026-07-30 00:55 UTC**. Rates move daily — **re-pull
+Numbers below were pulled **2026-07-30 01:38 UTC**. Rates move daily — **re-pull
 immediately before posting** (`npm run launch:numbers`), or the post undermines its
 own claim.
 
@@ -15,8 +15,8 @@ nairarate.dev returns all three NGN markets in one call — the CBN official
 rate, the parallel ("black market") rate, and the USDT/USDC street price —
 plus the spreads between them.
 
-Right now: official ₦1365.53, parallel ₦1394.57, USDT ₦1396.03.
-A 2.13% spread that no mainstream FX API will show you.
+Right now: official ₦1,365.53, parallel ₦1,393.95, USDT ₦1,396.07.
+A 2.08% spread that no mainstream FX API will show you.
 
 $0.03 per call in USDC on Base via x402. No API key, no signup.
 
@@ -86,26 +86,29 @@ All of it documented rather than quietly patched.
 
 ---
 
-## Live numbers, 2026-07-30 00:55 UTC
+## Live numbers, 2026-07-30 01:38 UTC
 
 Confidence `high`, both sources healthy.
 
 | | rate | |
 |---|---|---|
-| USD official | ₦1365.53 | CBN NFEM, 2026-07-28 |
-| USD parallel | ₦1394.57 | 44 providers |
-| USDT street | ₦1396.03 | |
-| USDC street | ₦1398.31 | |
+| USD official | ₦1,365.53 | CBN NFEM, 2026-07-28 |
+| USD parallel | ₦1,393.95 | 43 providers |
+| USDT street | ₦1,396.07 | |
+| USDC street | ₦1,398.35 | |
 
 | spread | |
 |---|---|
-| parallel vs official | **+2.13%** |
-| USDT vs official | +2.23% |
-| USDC vs parallel | +0.27% |
+| parallel vs official | **+2.08%** |
+| USDT vs official | +2.24% |
 
 7-day USD trend: parallel `stable`, official `stable`, spread **`compressing`**.
 
-All parallel-vs-official spreads: ZAR +5.53%, EUR +3.49%, GBP +3.33%, USD +2.13%,
+`provider_count` moved 44 → 43 between two pulls twenty minutes apart. That is the
+screening working, not instability — a changer dropped out or was rejected. Quote
+whatever the number is at the moment you post.
+
+All parallel-vs-official spreads: ZAR +5.50%, EUR +3.49%, GBP +3.33%, USD +2.08%,
 XOF +1.72%, XAF +1.07%, CNY +0.45%, AED +0.25%.
 
 ---
