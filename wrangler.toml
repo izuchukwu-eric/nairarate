@@ -29,6 +29,14 @@ database_id = "4bc7660c-89b9-44c8-8b63-5c06a6665a01"
 # Changing one without the other silently stops a sync from ever running.
 crons = ["*/15 * * * *", "0 7,12 * * 1-5"]
 
+# Lets `import indexHtml from './site/index.html'` resolve to the file's text.
+# Verified that adding this rule does not disturb wrangler's default module
+# handling: bundle size and behaviour are identical with and without an explicit
+# ESModule rule alongside it.
+[[rules]]
+type = "Text"
+globs = ["**/*.html"]
+
 [vars]
 ENVIRONMENT = "production"
 # The network real payments settle on. Deliberately a var, not a secret: a secret

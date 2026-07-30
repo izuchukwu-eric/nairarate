@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nairarate.dev, Nigerian FX. Three markets. One call.</title>
+<meta name="description" content="CBN official rate, parallel market rate, USDT/USDC street price, and the spread between them. x402-gated API, no API key, no account.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#0a0a0a; --surface:#111111; --text:#e8e8e8; --accent:#00c896; --mono:'IBM Plex Mono',ui-monospace,monospace; }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin:0; padding:0; background:var(--bg); }
+  body { color:var(--text); font-family:Inter,system-ui,sans-serif; -webkit-font-smoothing:antialiased; padding:0 24px 96px; }
+  ::selection { background:var(--accent); color:var(--bg); }
+  a { color:var(--text); }
+  a:hover { color:var(--accent); }
+  .wrap { max-width:820px; margin:0 auto; display:flex; flex-direction:column; gap:112px; padding-top:120px; }
+  section, footer { display:flex; flex-direction:column; }
+  h1 { font-family:var(--mono); font-weight:500; font-size:clamp(34px,6.4vw,62px); line-height:1.05; letter-spacing:-0.035em; margin:0; }
+  .lede { font-size:17px; line-height:1.6; margin:0; max-width:52ch; color:rgba(232,232,232,0.72); text-wrap:pretty; }
+  .label { font-family:var(--mono); font-size:11px; letter-spacing:0.16em; text-transform:uppercase; color:rgba(232,232,232,0.42); }
+  .hero { gap:40px; }
+  .ticker { border:1px solid rgba(232,232,232,0.1); background:var(--surface); padding:28px 28px 24px; display:flex; flex-direction:column; gap:18px; }
+  .ticker-head { font-family:var(--mono); font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color:rgba(232,232,232,0.42); }
+  .spread-row { display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; }
+  #spread { font-family:var(--mono); font-size:clamp(40px,8vw,56px); font-weight:600; letter-spacing:-0.03em; color:var(--accent); line-height:1; opacity:0; transition:opacity 600ms ease-out; }
+  #spread.in { opacity:1; }
+  .range { font-family:var(--mono); font-size:12px; color:rgba(232,232,232,0.42); }
+  .rates { font-family:var(--mono); font-size:14px; color:rgba(232,232,232,0.72); display:flex; gap:10px; flex-wrap:wrap; }
+  .dot { color:rgba(232,232,232,0.3); }
+  .status { display:flex; gap:10px; flex-wrap:wrap; font-family:var(--mono); font-size:12px; color:rgba(232,232,232,0.42); border-top:1px solid rgba(232,232,232,0.08); padding-top:16px; }
+  #degraded { color:rgba(232,232,232,0.6); display:none; }
+  .cta { display:flex; flex-direction:column; gap:10px; }
+  .cta-label, .note { font-family:var(--mono); font-size:12px; color:rgba(232,232,232,0.5); }
+  .code { position:relative; border:1px solid rgba(232,232,232,0.14); background:var(--surface); }
+  .code.accent { border-color:var(--accent); }
+  .code pre { margin:0; padding:20px 96px 20px 20px; font-family:var(--mono); font-size:14px; line-height:1.55; color:var(--text); overflow-x:auto; }
+  .copy { position:absolute; top:10px; right:10px; background:transparent; border:1px solid rgba(232,232,232,0.18); color:rgba(232,232,232,0.62); font-family:var(--mono); font-size:11px; letter-spacing:0.06em; padding:6px 10px; cursor:pointer; }
+  .copy:hover { border-color:var(--accent); color:var(--accent); }
+  .payload { border:1px solid rgba(232,232,232,0.1); background:var(--surface); }
+  .payload pre { margin:0; padding:24px; font-family:var(--mono); font-size:13px; line-height:1.65; color:rgba(232,232,232,0.88); overflow-x:auto; }
+  .payload .c { color:rgba(232,232,232,0.35); }
+  .prose { display:flex; flex-direction:column; gap:22px; max-width:64ch; }
+  .prose p { margin:0; font-size:16px; line-height:1.72; color:rgba(232,232,232,0.8); text-wrap:pretty; }
+  code { font-family:var(--mono); font-size:0.9em; color:var(--text); }
+  .methodology { font-family:var(--mono); font-size:13px; text-decoration:none; color:rgba(232,232,232,0.72); border-bottom:1px solid rgba(232,232,232,0.2); align-self:flex-start; padding-bottom:2px; }
+  .endpoints { border:1px solid rgba(232,232,232,0.1); }
+  .erow { display:grid; grid-template-columns:minmax(160px,1fr) minmax(200px,2fr) minmax(120px,0.8fr); gap:20px; padding:20px; border-bottom:1px solid rgba(232,232,232,0.1); align-items:start; }
+  .erow:last-child { border-bottom:none; }
+  .erow.head { padding:16px 20px; font-family:var(--mono); font-size:11px; letter-spacing:0.12em; text-transform:uppercase; color:rgba(232,232,232,0.42); }
+  .erow .ep { font-family:var(--mono); font-size:14px; color:var(--text); }
+  .erow .desc { font-size:14px; line-height:1.55; color:rgba(232,232,232,0.72); }
+  .erow .price { font-family:var(--mono); font-size:14px; color:rgba(232,232,232,0.88); }
+  .plain { display:flex; flex-direction:column; gap:8px; font-size:14px; line-height:1.5; color:rgba(232,232,232,0.72); }
+  .muted { font-family:var(--mono); font-size:12px; line-height:1.7; color:rgba(232,232,232,0.4); max-width:60ch; }
+  .tablewrap { border:1px solid rgba(232,232,232,0.1); overflow-x:auto; }
+  table { border-collapse:collapse; width:100%; min-width:520px; font-family:var(--mono); font-size:13px; }
+  th { text-align:left; padding:14px 20px; border-bottom:1px solid rgba(232,232,232,0.1); font-weight:400; font-size:11px; letter-spacing:0.12em; text-transform:uppercase; color:rgba(232,232,232,0.42); }
+  td { padding:11px 20px; border-bottom:1px solid rgba(232,232,232,0.06); color:rgba(232,232,232,0.7); }
+  td:first-child { color:var(--text); }
+  tr:last-child td { border-bottom:none; }
+  footer { border-top:1px solid rgba(232,232,232,0.1); padding-top:28px; }
+  .flinks { display:flex; gap:12px; flex-wrap:wrap; font-family:var(--mono); font-size:13px; }
+  .flinks a { text-decoration:none; color:rgba(232,232,232,0.72); }
+  @media (max-width:640px) {
+    body { padding:0 18px 72px; }
+    .wrap { gap:80px; padding-top:72px; }
+    .ticker { padding:22px 20px; }
+    .erow, .erow.head { grid-template-columns:1fr; gap:8px; }
+    .erow.head { display:none; }
+    .code pre { padding:20px 20px 52px; font-size:13px; }
+    .copy { top:auto; bottom:10px; right:10px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <section class="hero">
+    <h1>Nigerian FX.<br>Three markets.<br>One call.</h1>
+    <p class="lede">CBN official rate. Parallel market rate. USDT/USDC street price. The spread between them. Paid per call in USDC on Base via x402, no API key, no account, no subscription.</p>
+
+    <div class="ticker">
+      <div class="ticker-head">USD parallel vs official right now</div>
+      <div class="spread-row">
+        <div id="spread">+2.08%</div>
+        <div class="range">typical range 1–6%</div>
+      </div>
+      <div class="rates">
+        <span id="parallel">₦1,393.95</span><span class="dot">·</span><span id="official">₦1,365.53</span>
+      </div>
+      <div style="font-family:var(--mono);font-size:11px;color:rgba(232,232,232,0.35)">Rates as of last deploy · /health for live freshness</div>
+      <div class="status">
+        <span id="age">status: checking…</span><span class="dot" id="status-dot">·</span><span id="sources">checking sources…</span>
+        <span id="degraded">⚠ data may be stale</span>
+      </div>
+    </div>
+
+    <div class="cta">
+      <div class="cta-label">Check freshness first. This one's free.</div>
+      <div class="code accent">
+        <pre id="cmd-health">curl https://nairarate.dev/health</pre>
+        <button class="copy" data-copy="cmd-health">Copy</button>
+      </div>
+    </div>
+  </section>
+
+  <section style="gap:20px">
+    <div class="label">What you get</div>
+    <div class="payload">
+<pre>{
+  "timestamp": "2026-07-30T01:30:05Z",
+  "base": "NGN",
+  "confidence": "high",
+  "spreads": {
+    "parallel_vs_official_pct": 2.08,
+    "crypto_vs_official_pct": 2.24
+  },
+  "rates": {
+    "USD": {
+      "official": { "mid": 1365.5303, "source": "CBN", "as_of": "2026-07-28" },
+      "parallel": { "bid": 1391.50, "ask": 1396.40, "mid": 1393.9484, "provider_count": 43 },
+      "trend_7d": {
+        "parallel_direction": "stable",
+        "official_direction": "stable",
+        "spread_direction": "compressing"
+      }
+    },
+    "USDT": {
+      "crypto_street": { "bid": 1394.00, "ask": 1398.10, "mid": 1396.065, "provider_count": 16 },
+      "trend_7d": { "parallel_direction": "stable" }
+    }
+    <span class="c">// ... 13 more currencies</span>
+  },
+  "data_age": {
+    "monierate_minutes": 8,
+    "cbn_minutes": 818
+  }
+}</pre>
+    </div>
+    <div class="cta" style="margin-top:12px">
+      <div class="code">
+<pre id="cmd-paid">curl https://nairarate.dev/v1/rates \
+  -H "X-PAYMENT: &lt;x402-payment-token&gt;"</pre>
+        <button class="copy" data-copy="cmd-paid">Copy</button>
+      </div>
+      <div class="note">$0.03 in USDC on Base. No API key. No account.</div>
+    </div>
+  </section>
+
+  <section style="gap:24px">
+    <div class="label">The hard part</div>
+    <div class="prose">
+      <p>Aggregate the raw provider list naively and USD/NGN comes out at ₦1,181 against a true ₦1,392. The central bank quotes inside the parallel feed. Remittance corridors report a missing side as zero. One feed had GBP at ₦130.</p>
+      <p>Every quote is classified before it enters the aggregate. Central bank feeds, reference feeds, and mechanical-band quoters are excluded from the parallel market calculation. The remainder is aggregated by median, not mean, with 3× outlier rejection. <code>provider_count</code> is in every response so callers can see AED rests on one quote while USD rests on 43.</p>
+      <p>The official series reaches back to 2001-12-10, 51,028 daily rows from the CBN's own feed, screened for the 27 data-entry errors that appear in the original (GBP at ₦2,248,433 on one date; EUR at ₦755,240 on another). Parallel and stablecoin history to September 2023.</p>
+    </div>
+    <a class="methodology" href="/methodology">Full methodology → nairarate.dev/methodology</a>
+  </section>
+
+  <section style="gap:20px">
+    <div class="label">Endpoints</div>
+    <div class="endpoints">
+      <div class="erow head"><div>Endpoint</div><div>What it returns</div><div>Price</div></div>
+      <div class="erow">
+        <div class="ep">GET /v1/rates</div>
+        <div class="desc">All 15 currencies, all markets, live spreads, 7-day trends</div>
+        <div class="price">$0.03 / call</div>
+      </div>
+      <div class="erow">
+        <div class="ep">GET /v1/rates/history</div>
+        <div class="desc">Daily snapshots up to 365 days, trend analysis</div>
+        <div class="price">$0.01–$0.05 / call</div>
+      </div>
+    </div>
+    <div class="plain">
+      <div>Payments in USDC on Base via x402</div>
+      <div>No API key. No account. No subscription.</div>
+      <div><code>GET /health</code> is always free, check source freshness before you pay.</div>
+    </div>
+    <div class="muted">/history price scales with depth: 1–7 days $0.01 · 8–30 days $0.02 · 31–90 days $0.03 · 91–365 days $0.05</div>
+  </section>
+
+  <section style="gap:20px">
+    <div class="label">Coverage</div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Currency</th><th>Official (CBN)</th><th>Parallel (market)</th></tr></thead>
+        <tbody id="coverage"></tbody>
+      </table>
+    </div>
+    <div class="muted">provider_count is returned in every response. Single-provider currencies are usable but flagged in confidence scoring.</div>
+  </section>
+
+  <footer>
+    <div class="flinks">
+      <a href="/methodology">/methodology</a><span class="dot">·</span>
+      <a href="/openapi.json">/openapi.json</a><span class="dot">·</span>
+      <a href="/llms.txt">/llms.txt</a>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+(function () {
+  var HEALTH_URL = '/health';  // same-origin: the Worker serves this page
+
+  var COVERAGE = [
+    ['USD', '\u2713  \u20A61,365  (NFEM)', '\u2713  44 providers'],
+    ['EUR', '\u2713', '\u2713  7 providers'],
+    ['GBP', '\u2713', '\u2713  7 providers'],
+    ['USDT', '\u2014', '\u2713  crypto_street, 16 providers'],
+    ['USDC', '\u2014', '\u2713  crypto_street, 15 providers'],
+    ['AED', '\u2713', '\u2713  1 provider'],
+    ['CNY', '\u2713', '\u2713  1 provider'],
+    ['CAD', '\u2014', '\u2713  2 providers'],
+    ['ZAR', '\u2713', '\u2713  2 providers'],
+    ['XOF', '\u2713  (shared CFA)', '\u2713  1 provider'],
+    ['XAF', '\u2713  (shared CFA)', '\u2713  1 provider'],
+    ['CHF', '\u2713', '\u2014  official only'],
+    ['JPY', '\u2713', '\u2014  official only'],
+    ['DKK', '\u2713', '\u2014  official only'],
+    ['SAR', '\u2713', '\u2014  official only']
+  ];
+
+  function renderCoverage() {
+    var body = document.getElementById('coverage');
+    if (!body) return;
+    var frag = document.createDocumentFragment();
+    COVERAGE.forEach(function (row) {
+      var tr = document.createElement('tr');
+      row.forEach(function (cell) {
+        var td = document.createElement('td');
+        td.textContent = cell;
+        tr.appendChild(td);
+      });
+      frag.appendChild(tr);
+    });
+    body.appendChild(frag);
+  }
+
+  function ageMinutes(src) {
+    if (!src) return null;
+    if (typeof src.age_minutes === 'number') return src.age_minutes;
+    if (src.last_success) {
+      var m = Math.round((Date.now() - new Date(src.last_success).getTime()) / 60000);
+      return isFinite(m) ? m : null;
+    }
+    return null;
+  }
+
+  function ageText(m) {
+    if (m === null) return null;
+    if (m < 1) return 'Updated just now';
+    if (m < 60) return 'Updated ' + m + ' minute' + (m === 1 ? '' : 's') + ' ago';
+    var h = Math.round(m / 60);
+    return 'Updated ' + h + ' hour' + (h === 1 ? '' : 's') + ' ago';
+  }
+
+  function applyHealth(h) {
+    var s = (h && h.sources) || h || {};
+    var mon = s.monierate, cbn = s.cbn;
+    var text = ageText(ageMinutes(mon));
+    document.getElementById('age').textContent = text || 'freshness unavailable';
+
+    var monOk = !!(mon && mon.healthy), cbnOk = !!(cbn && cbn.healthy);
+    document.getElementById('sources').textContent =
+      (cbnOk ? 'cbn ok' : 'cbn down') + ' \u00B7 ' + (monOk ? 'monierate ok' : 'monierate down');
+
+    var stale = h && (h.confidence === 'degraded' || h.status === 'degraded' || !monOk);
+    document.getElementById('degraded').style.display = stale ? '' : 'none';
+    document.getElementById('status-dot').style.display = document.getElementById('sources').textContent ? '' : 'none';
+  }
+
+  function healthFailed() {
+    document.getElementById('age').textContent = 'status unavailable';
+    document.getElementById('sources').textContent = '';
+    document.getElementById('status-dot').style.display = 'none';
+  }
+
+  function initCopy() {
+    var buttons = document.querySelectorAll('.copy');
+    Array.prototype.forEach.call(buttons, function (btn) {
+      btn.addEventListener('click', function () {
+        var pre = document.getElementById(btn.getAttribute('data-copy'));
+        var text = pre ? pre.textContent : '';
+        var done = function () {
+          btn.textContent = 'Copied';
+          setTimeout(function () { btn.textContent = 'Copy'; }, 1500);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done, done);
+        } else {
+          var ta = document.createElement('textarea');
+          ta.value = text;
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          try { document.execCommand('copy'); } catch (e) {}
+          document.body.removeChild(ta);
+          done();
+        }
+      });
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    renderCoverage();
+    initCopy();
+    document.getElementById('spread').classList.add('in');
+
+    if (!window.fetch) { healthFailed(); return; }
+    fetch(HEALTH_URL, { headers: { accept: 'application/json' } })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(applyHealth)
+      .catch(healthFailed);
+  });
+})();
+</script>
+</body>
+</html>

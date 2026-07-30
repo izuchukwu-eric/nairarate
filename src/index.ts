@@ -1,6 +1,8 @@
 import { Hono } from 'hono'
 import { paymentMiddleware } from '@x402/hono'
 
+import indexHtml from './site/index.html'
+
 import { PRICE_HISTORY, PRICE_RATES, enrichPermit2Response, setupX402 } from './payment/x402'
 import type { X402Setup } from './payment/x402'
 import { syncCbn } from './jobs/sync-cbn'
@@ -10,6 +12,7 @@ import {
   methodologyHandler,
   wellKnownX402Handler,
 } from './routes/discovery'
+import { corsMiddleware } from './routes/cors'
 import { healthHandler } from './routes/health'
 import { openApiHandler } from './routes/openapi'
 import { historyHandler } from './routes/history'
@@ -17,6 +20,10 @@ import { ratesHandler } from './routes/rates'
 import type { Env } from './types/rates'
 
 const app = new Hono<{ Bindings: Env }>()
+
+// First, before anything else — including the paywall. A browser preflight carries
+// no payment, so it has to be answered before the payment middleware sees it.
+app.use('*', corsMiddleware)
 
 // Free routes, registered before any payment middleware. Discovery has to be free:
 // an agent cannot decide to pay for something it cannot first read about.
@@ -26,8 +33,29 @@ app.get('/llms.txt', llmsTxtHandler)
 app.get('/methodology', methodologyHandler)
 app.get('/openapi.json', openApiHandler)
 
-app.get('/', (c) =>
-  c.json({
+/**
+ * GET / — the landing page for browsers, the service descriptor for everything else.
+ *
+ * Content-negotiated rather than one or the other. Serving the page from this
+ * Worker makes its `/health` call same-origin, which is the point; but `/` was
+ * already a JSON descriptor and an agent that reads it should not suddenly receive
+ * markup. Machine discovery proper lives at /.well-known/x402, /llms.txt and
+ * /openapi.json.
+ */
+app.get('/', (c) => {
+  const accept = c.req.header('accept') ?? ''
+  const wantsJson = accept.includes('application/json') && !accept.includes('text/html')
+
+  if (!wantsJson) {
+    return c.html(indexHtml, 200, {
+      'cache-control': 'public, max-age=0, must-revalidate',
+      'x-content-type-options': 'nosniff',
+      'referrer-policy': 'no-referrer',
+      'x-frame-options': 'DENY',
+    })
+  }
+
+  return c.json({
     name: 'nairarate.dev',
     description:
       'Nigerian FX intelligence — CBN official, parallel market and stablecoin street rates, ' +
@@ -35,7 +63,7 @@ app.get('/', (c) =>
     endpoints: {
       'GET /health': 'Source freshness. Free.',
       'GET /v1/rates': `All markets, all currencies. ${PRICE_RATES}.`,
-      'GET /v1/rates/history': `Daily historical series. ${PRICE_HISTORY}.`,
+      'GET /v1/rates/history': `Daily historical series. Up to ${PRICE_HISTORY}.`,
     },
     conventions: {
       base: 'NGN — every rate is naira per unit of the quoted currency.',
@@ -49,8 +77,8 @@ app.get('/', (c) =>
       'GET /openapi.json': 'OpenAPI 3.1 spec.',
     },
     docs: 'https://nairarate.dev',
-  }),
-)
+  })
+})
 
 /**
  * x402 payment gating on /v1/*.
