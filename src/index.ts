@@ -1,7 +1,6 @@
 import { Hono } from 'hono'
 import { paymentMiddleware } from '@x402/hono'
 
-import indexHtml from './site/index.html'
 
 import { PRICE_HISTORY, PRICE_RATES, enrichPermit2Response, setupX402 } from './payment/x402'
 import type { X402Setup } from './payment/x402'
@@ -13,6 +12,7 @@ import {
   wellKnownX402Handler,
 } from './routes/discovery'
 import { corsMiddleware } from './routes/cors'
+import { landingHandler } from './routes/landing'
 import { healthHandler } from './routes/health'
 import { openApiHandler } from './routes/openapi'
 import { historyHandler } from './routes/history'
@@ -42,18 +42,11 @@ app.get('/openapi.json', openApiHandler)
  * markup. Machine discovery proper lives at /.well-known/x402, /llms.txt and
  * /openapi.json.
  */
-app.get('/', (c) => {
+app.get('/', async (c) => {
   const accept = c.req.header('accept') ?? ''
   const wantsJson = accept.includes('application/json') && !accept.includes('text/html')
 
-  if (!wantsJson) {
-    return c.html(indexHtml, 200, {
-      'cache-control': 'public, max-age=0, must-revalidate',
-      'x-content-type-options': 'nosniff',
-      'referrer-policy': 'no-referrer',
-      'x-frame-options': 'DENY',
-    })
-  }
+  if (!wantsJson) return landingHandler(c)
 
   return c.json({
     name: 'nairarate.dev',
