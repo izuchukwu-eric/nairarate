@@ -318,6 +318,68 @@ export function enrichPermit2Response(res: Response, network: Network): Response
   return new Response(JSON.stringify(body), { status: res.status, headers })
 }
 
+/** USDC contract per network — quoted in discovery so a scanner need not resolve it. */
+export const USDC_ADDRESS: Record<X402Network, string> = {
+  base: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+  'base-sepolia': '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+}
+
+export interface DiscoveryAccept {
+  scheme: string
+  network: Network
+  price: string
+  payTo: string
+  asset: string
+  assetAddress: string
+}
+
+export interface DiscoveryResource {
+  url: string
+  method: string
+  description: string
+  accepts: DiscoveryAccept[]
+}
+
+/**
+ * The paid resources, in the shape discovery indexes expect.
+ *
+ * Derived from the same route configuration that generates the 402 challenge, so
+ * the advertised terms cannot drift from the enforced ones — a directory quoting a
+ * price the endpoint does not charge is worse than no listing.
+ *
+ * Free endpoints are deliberately absent: `resources[]` means "things you pay for".
+ * They are declared instead in the OpenAPI document with `security: []`, which is
+ * how a scanner is meant to learn an endpoint is public.
+ */
+export function discoveryResources(env: Env, origin: string): DiscoveryResource[] {
+  const payTo = env.X402_WALLET_ADDRESS?.trim()
+  if (!payTo) return []
+
+  const network = resolveNetwork(env)
+  const caip2 = CAIP2[network]
+  const routes = buildRoutes(payTo, caip2) as Record<
+    string,
+    { accepts: { scheme: string; price: string }[]; description?: string }
+  >
+
+  return Object.entries(routes).map(([key, cfg]) => {
+    const [method, path] = key.split(' ', 2)
+    return {
+      url: `${origin}${path}`,
+      method: method ?? 'GET',
+      description: cfg.description ?? '',
+      accepts: cfg.accepts.map((a) => ({
+        scheme: a.scheme,
+        network: caip2,
+        price: a.price,
+        payTo,
+        asset: 'USDC',
+        assetAddress: USDC_ADDRESS[network],
+      })),
+    }
+  })
+}
+
 export interface X402Setup {
   network: X402Network
   caip2: Network

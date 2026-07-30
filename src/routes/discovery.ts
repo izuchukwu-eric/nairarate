@@ -1,7 +1,7 @@
 import type { Context } from 'hono'
 
 import { CURRENCIES, CURRENCY_CODES } from '../config/currencies'
-import { PRICE_HISTORY, PRICE_RATES, resolveNetwork, CAIP2 } from '../payment/x402'
+import { PRICE_HISTORY, PRICE_RATES, resolveNetwork, CAIP2, discoveryResources } from '../payment/x402'
 import { HISTORY_TIERS, MAX_DAYS, describeHistoryTiers } from '../config/pricing'
 import type { Env } from '../types/rates'
 
@@ -60,50 +60,29 @@ export function wellKnownX402Handler(c: Context<{ Bindings: Env }>): Response {
         'Nigerian FX intelligence: the CBN official rate, the parallel (street) market rate ' +
         'and USDT/USDC street prices, with the spreads between them, 7-day trends and a ' +
         'freshness-based confidence score.',
-      endpoints: [
-        {
-          path: '/health',
-          method: 'GET',
-          price: null,
-          description: 'Per-source freshness. Free — check before paying.',
-        },
-        {
-          path: '/v1/rates',
-          method: 'GET',
-          price: PRICE_RATES,
-          network,
-          schemes: ['exact'],
-          description: 'All markets, all currencies, with spreads and 7-day trends.',
-          parameters: {
-            currencies: `Optional comma-separated filter. Default: all.`,
-            markets: 'Optional: official, parallel, crypto_street, or all. Default: all.',
-          },
-        },
-        {
-          path: '/v1/rates/history',
-          method: 'GET',
-          price: PRICE_HISTORY,
-          price_note: `Ceiling. Charged by window size: ${describeHistoryTiers()}.`,
-          pricing_tiers: HISTORY_TIERS.map((t) => ({
-            up_to_days: t.maxDays,
-            settles: t.usd,
-            base_units: t.amount,
-          })),
-          scheme_note:
-            '`upto` settles by tier; `exact` settles the cap regardless of window.',
-          network,
-          schemes: ['upto', 'exact'],
-          description:
-            'Daily series for one currency and market, with trend, high and low. ' +
-            'Official series reach back to 2001-12-10.',
-          parameters: {
-            currency: 'Required.',
-            market: 'Required: official, parallel, or crypto_street.',
-            days: `Optional 1-${MAX_DAYS}. Default 7. Determines the amount settled.`,
-          },
-        },
+
+      // Pointers first — an indexer that finds this document uses them to reach the
+      // full spec, where the free endpoints are declared with `security: []`.
+      openapi: `${origin}/openapi.json`,
+      llms: `${origin}/llms.txt`,
+      methodology: `${origin}/methodology`,
+
+      // The paid surface, carrying full payment terms per resource. Generated from
+      // the same route config as the 402 challenge, so the two cannot disagree.
+      resources: discoveryResources(c.env, origin),
+
+      // Free by design. Listed separately from `resources` because that array means
+      // "things you pay for"; these are also declared `security: []` in the OpenAPI.
+      publicEndpoints: [
+        { url: `${origin}/health`, method: 'GET', description: 'Per-source freshness. Check before paying.' },
+        { url: `${origin}/.well-known/x402`, method: 'GET', description: 'This document.' },
+        { url: `${origin}/llms.txt`, method: 'GET', description: 'Plain-text description for agents.' },
+        { url: `${origin}/methodology`, method: 'GET', description: 'How the rates are derived and screened.' },
+        { url: `${origin}/openapi.json`, method: 'GET', description: 'OpenAPI 3.1 spec.' },
       ],
+
       base: 'NGN',
+      network,
       conventions: {
         bid: 'NGN received per unit of foreign currency (the low side).',
         ask: 'NGN paid per unit of foreign currency (the high side).',
@@ -112,10 +91,8 @@ export function wellKnownX402Handler(c: Context<{ Bindings: Env }>): Response {
       coverage: coverage(),
       sources: {
         official: 'Central Bank of Nigeria (NFEM and published exchange rates).',
-        parallel: 'Monierate — aggregated across 40+ changers, screened and median-aggregated.',
+        parallel: 'Aggregated across 40+ changers, screened and median-aggregated.',
       },
-      methodology: `${origin}/methodology`,
-      links: { llms: `${origin}/llms.txt` },
     },
     200,
     { 'cache-control': PRICED_DOC_CACHE },
