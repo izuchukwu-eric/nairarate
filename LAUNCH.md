@@ -77,9 +77,10 @@ All of it documented rather than quietly patched.
 
 ## What not to claim
 
-- **Don't say "40+ providers"** without qualifying it. USD has 44 quoting; AED and
-  CNY rest on **one**. `provider_count` is in every response for exactly this
-  reason — say "up to 44, and the count is in the payload."
+- **Don't say "40+ providers"** without qualifying it. USD has ~43 quoting on a
+  given day; AED and CNY rest on **one**. `provider_count` is in every response
+  for exactly this reason — say "the count is in every payload" rather than
+  pinning a number that moves.
 - **Don't imply every currency has every market.** Coverage is deliberately
   asymmetric: 3 have official+parallel, 2 are stablecoin-only, 4 are official-only.
 - **Don't quote a spread without its timestamp.** They move daily.
