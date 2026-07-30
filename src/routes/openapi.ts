@@ -15,6 +15,14 @@ import type { Env } from '../types/rates'
 
 const MARKETS = ['official', 'parallel', 'crypto_street'] as const
 
+/** '$0.03' -> '0.030000'. AgentCash wants decimal USD, six places. */
+function usdAmount(price: string): string {
+  return Number(price.replace('$', '')).toFixed(6)
+}
+
+/** Only x402 is implemented; MPP is not, so it is not advertised. */
+const PAYMENT_PROTOCOLS = [{ x402: {} }]
+
 const quoteSchema = (withProviderCount: boolean) => ({
   type: 'object',
   nullable: true,
@@ -60,6 +68,22 @@ export function openApiHandler(c: Context<{ Bindings: Env }>): Response {
         'as `null`, never fabricated, and requesting such a combination on /v1/rates/history ' +
         `returns 400 with an explanation. See ${origin}/methodology for how rates are screened.`,
       license: { name: 'Proprietary' },
+      'x-guidance':
+        'Start with GET /health — it is free and reports how fresh each source is, so an ' +
+        'agent can decide whether paying is worthwhile. GET /v1/rates then returns every ' +
+        'currency across every market it has in one call, with the spreads between them, ' +
+        '7-day trends and a confidence score; filter with ?currencies=USD,USDT and ' +
+        '?markets=parallel if a narrower payload is wanted, though the price is the same. ' +
+        'GET /v1/rates/history returns one daily series and requires ?currency= and ' +
+        '?market=; its price scales with ?days= (1-7 $0.01, 8-30 $0.02, 31-90 $0.03, ' +
+        '91-365 $0.05) when paying with the `upto` scheme, and is a flat $0.05 with `exact`. ' +
+        'Coverage is asymmetric and is stated in x-coverage: some currencies have only an ' +
+        'official rate, some only a street price. A market a currency does not carry is ' +
+        'null, never fabricated, and asking /v1/rates/history for one returns 400 with an ' +
+        'explanation and no charge — no payment is settled on any 4xx. All rates are NGN ' +
+        'per unit of the quoted currency; bid is the low side, ask the high side. ' +
+        'Payment is x402 in USDC on Base: call without payment to receive a 402 whose ' +
+        'PAYMENT-REQUIRED header states the terms.',
       contact: { email: 'onukwubeizu@gmail.com', url: 'https://nairarate.dev' },
     },
     servers: [{ url: origin }],
@@ -99,7 +123,12 @@ export function openApiHandler(c: Context<{ Bindings: Env }>): Response {
       },
       '/v1/rates': {
         get: {
-          security: [{ x402Payment: [] }],
+          operationId: 'getRates',
+          tags: ['Rates'],
+          'x-payment-info': {
+            price: { mode: 'fixed', currency: 'USD', amount: usdAmount(PRICE_RATES) },
+            protocols: PAYMENT_PROTOCOLS,
+          },
           summary: `All markets, all currencies. ${PRICE_RATES} per call.`,
           description: `Paid via x402 in USDC on ${network}, scheme \`exact\`.`,
           parameters: [
@@ -121,14 +150,35 @@ export function openApiHandler(c: Context<{ Bindings: Env }>): Response {
           responses: {
             '200': { description: 'Rates.', content: { 'application/json': { schema: { $ref: '#/components/schemas/RatesResponse' } } } },
             '400': { description: 'Unsupported currency or market.', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
-            '402': { $ref: '#/components/responses/PaymentRequired' },
+            '402': {
+              description: 'Payment Required',
+              headers: {
+                'PAYMENT-REQUIRED': {
+                  description: 'Base64-encoded x402 payment requirements.',
+                  schema: { type: 'string' },
+                },
+              },
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+            },
             '503': { description: 'No data collected yet. Only reachable before the first sync.' },
           },
         },
       },
       '/v1/rates/history': {
         get: {
-          security: [{ x402Payment: [] }],
+          operationId: 'getRatesHistory',
+          tags: ['Rates'],
+          // Dynamic rather than fixed: the settled amount scales with `days` under the
+          // `upto` scheme. min/max are the ends of HISTORY_TIERS.
+          'x-payment-info': {
+            price: {
+              mode: 'dynamic',
+              currency: 'USD',
+              min: usdAmount(HISTORY_TIERS[0]!.usd),
+              max: usdAmount(HISTORY_TIERS[HISTORY_TIERS.length - 1]!.usd),
+            },
+            protocols: PAYMENT_PROTOCOLS,
+          },
           summary: `Daily historical series. Up to ${PRICE_HISTORY} per call, priced by window.`,
           description:
             `Paid via x402 in USDC on ${network}. Advertises both \`upto\` and \`exact\` — the ` +
@@ -164,7 +214,16 @@ export function openApiHandler(c: Context<{ Bindings: Env }>): Response {
                 'you are never charged for an empty result.',
               content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
             },
-            '402': { $ref: '#/components/responses/PaymentRequired' },
+            '402': {
+              description: 'Payment Required',
+              headers: {
+                'PAYMENT-REQUIRED': {
+                  description: 'Base64-encoded x402 payment requirements.',
+                  schema: { type: 'string' },
+                },
+              },
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+            },
           },
         },
       },
@@ -174,31 +233,6 @@ export function openApiHandler(c: Context<{ Bindings: Env }>): Response {
       '/openapi.json': { get: { security: [], summary: 'This document. Free.', responses: { '200': { description: 'OpenAPI 3.1 spec.' } } } },
     },
     components: {
-      securitySchemes: {
-        x402Payment: {
-          type: 'apiKey',
-          in: 'header',
-          name: 'X-PAYMENT',
-          description:
-            'x402 payment, carried in the X-PAYMENT header. Not an API key: it is a ' +
-            'per-request signed payment authorisation. Request the endpoint without it to ' +
-            'receive a 402 whose PAYMENT-REQUIRED header states the price and terms.',
-        },
-      },
-      responses: {
-        PaymentRequired: {
-          description:
-            'Payment required. Requirements are in the `PAYMENT-REQUIRED` response header, ' +
-            'base64-encoded JSON containing the `accepts` array.',
-          headers: {
-            'PAYMENT-REQUIRED': {
-              description: 'Base64-encoded x402 payment requirements.',
-              schema: { type: 'string' },
-            },
-          },
-          content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
-        },
-      },
       schemas: {
         Error: {
           type: 'object',
