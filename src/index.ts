@@ -13,6 +13,7 @@ import {
 } from './routes/discovery'
 import { corsMiddleware } from './routes/cors'
 import { landingHandler } from './routes/landing'
+import { FAVICON_ICO_BASE64 } from './site/favicon'
 import { healthHandler } from './routes/health'
 import { openApiHandler } from './routes/openapi'
 import { historyHandler } from './routes/history'
@@ -32,6 +33,21 @@ app.get('/.well-known/x402', wellKnownX402Handler)
 app.get('/llms.txt', llmsTxtHandler)
 app.get('/methodology', methodologyHandler)
 app.get('/openapi.json', openApiHandler)
+
+/**
+ * GET /favicon.ico
+ *
+ * Decoded once per isolate rather than per request. Immutable and long-cached: the
+ * bytes only change when scripts/make-favicon.py is re-run and the Worker redeployed.
+ */
+const faviconBytes = Uint8Array.from(atob(FAVICON_ICO_BASE64), (ch) => ch.charCodeAt(0))
+
+app.get('/favicon.ico', (c) =>
+  c.body(faviconBytes, 200, {
+    'content-type': 'image/x-icon',
+    'cache-control': 'public, max-age=604800, immutable',
+  }),
+)
 
 /**
  * GET / — the landing page for browsers, the service descriptor for everything else.

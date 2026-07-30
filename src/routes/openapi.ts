@@ -60,11 +60,12 @@ export function openApiHandler(c: Context<{ Bindings: Env }>): Response {
         'as `null`, never fabricated, and requesting such a combination on /v1/rates/history ' +
         `returns 400 with an explanation. See ${origin}/methodology for how rates are screened.`,
       license: { name: 'Proprietary' },
+      contact: { email: 'onukwubeizu@gmail.com', url: 'https://nairarate.dev' },
     },
     servers: [{ url: origin }],
     paths: {
       '/health': {
-        get: {
+        get: { security: [],
           summary: 'Source freshness. Free.',
           description: 'Check before paying. Returns 200 even when degraded — the body carries the status.',
           responses: {
@@ -98,6 +99,7 @@ export function openApiHandler(c: Context<{ Bindings: Env }>): Response {
       },
       '/v1/rates': {
         get: {
+          security: [{ x402Payment: [] }],
           summary: `All markets, all currencies. ${PRICE_RATES} per call.`,
           description: `Paid via x402 in USDC on ${network}, scheme \`exact\`.`,
           parameters: [
@@ -126,6 +128,7 @@ export function openApiHandler(c: Context<{ Bindings: Env }>): Response {
       },
       '/v1/rates/history': {
         get: {
+          security: [{ x402Payment: [] }],
           summary: `Daily historical series. Up to ${PRICE_HISTORY} per call, priced by window.`,
           description:
             `Paid via x402 in USDC on ${network}. Advertises both \`upto\` and \`exact\` — the ` +
@@ -165,12 +168,23 @@ export function openApiHandler(c: Context<{ Bindings: Env }>): Response {
           },
         },
       },
-      '/.well-known/x402': { get: { summary: 'Service manifest. Free.', responses: { '200': { description: 'Manifest.' } } } },
-      '/llms.txt': { get: { summary: 'Plain-text description for agents. Free.', responses: { '200': { description: 'Text.' } } } },
-      '/methodology': { get: { summary: 'How rates are derived and screened. Free.', responses: { '200': { description: 'Text.' } } } },
-      '/openapi.json': { get: { summary: 'This document. Free.', responses: { '200': { description: 'OpenAPI 3.1 spec.' } } } },
+      '/.well-known/x402': { get: { security: [], summary: 'Service manifest. Free.', responses: { '200': { description: 'Manifest.' } } } },
+      '/llms.txt': { get: { security: [], summary: 'Plain-text description for agents. Free.', responses: { '200': { description: 'Text.' } } } },
+      '/methodology': { get: { security: [], summary: 'How rates are derived and screened. Free.', responses: { '200': { description: 'Text.' } } } },
+      '/openapi.json': { get: { security: [], summary: 'This document. Free.', responses: { '200': { description: 'OpenAPI 3.1 spec.' } } } },
     },
     components: {
+      securitySchemes: {
+        x402Payment: {
+          type: 'apiKey',
+          in: 'header',
+          name: 'X-PAYMENT',
+          description:
+            'x402 payment, carried in the X-PAYMENT header. Not an API key: it is a ' +
+            'per-request signed payment authorisation. Request the endpoint without it to ' +
+            'receive a 402 whose PAYMENT-REQUIRED header states the price and terms.',
+        },
+      },
       responses: {
         PaymentRequired: {
           description:

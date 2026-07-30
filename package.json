@@ -19,7 +19,8 @@
     "backfill:monierate:apply": "wrangler d1 execute nairarate --remote --file=.backfill/monierate.sql",
     "backfill:monierate:apply:local": "wrangler d1 execute nairarate --local --file=.backfill/monierate.sql",
     "test:payment": "tsx scripts/test-payment.ts",
-    "launch:numbers": "tsx scripts/launch-numbers.ts"
+    "launch:numbers": "tsx scripts/launch-numbers.ts",
+    "make:favicon": "python3 scripts/make-favicon.py"
   },
   "dependencies": {
     "@x402/evm": "^2.20.0",
