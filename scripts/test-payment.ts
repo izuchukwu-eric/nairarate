@@ -163,9 +163,21 @@ async function main(): Promise<void> {
     console.log(`  body      ${JSON.stringify(body).slice(0, 200)}`)
   }
 
-  const payerAfter = await usdcBalance(rpc, token, account.address)
-  console.log(`\n  payer USDC after:  ${payerAfter.toFixed(6)}  (spent ${(payerBefore - payerAfter).toFixed(6)})`)
-  console.log('  Settlement can lag a few seconds — re-check the payee balance if it reads 0.')
+  // Settlement is submitted by the facilitator and takes a few seconds to land, so
+  // reading the balance immediately reports "spent 0.000000" on a payment that in
+  // fact succeeded. Poll briefly rather than printing something misleading.
+  let payerAfter = payerBefore
+  for (let i = 0; i < 15; i++) {
+    payerAfter = await usdcBalance(rpc, token, account.address)
+    if (payerAfter !== payerBefore) break
+    await new Promise((r) => setTimeout(r, 2000))
+  }
+
+  const spent = payerBefore - payerAfter
+  console.log(`\n  payer USDC after:  ${payerAfter.toFixed(6)}  (spent ${spent.toFixed(6)})`)
+  if (spent === 0) {
+    console.log('  Balance unchanged after 30s — check the tx on the explorer above.')
+  }
 }
 
 main().catch((err: unknown) => {
