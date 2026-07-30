@@ -18,7 +18,8 @@
     "backfill:monierate": "tsx scripts/backfill-monierate.ts",
     "backfill:monierate:apply": "wrangler d1 execute nairarate --remote --file=.backfill/monierate.sql",
     "backfill:monierate:apply:local": "wrangler d1 execute nairarate --local --file=.backfill/monierate.sql",
-    "test:payment": "tsx scripts/test-payment.ts"
+    "test:payment": "tsx scripts/test-payment.ts",
+    "launch:numbers": "tsx scripts/launch-numbers.ts"
   },
   "dependencies": {
     "@x402/evm": "^2.20.0",
