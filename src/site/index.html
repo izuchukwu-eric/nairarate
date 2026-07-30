@@ -111,32 +111,33 @@
     <div class="label">What you get</div>
     <div class="payload">
 <pre>{
-  "timestamp": "2026-07-30T01:30:05Z",
+  "timestamp": "2026-07-30T02:30:05Z",
   "base": "NGN",
+  "data_age": { "parallel_minutes": 0, "official_minutes": 869 },
   "confidence": "high",
-  "spreads": {
-    "parallel_vs_official_pct": 2.08,
-    "crypto_vs_official_pct": 2.24
-  },
   "rates": {
     "USD": {
-      "official": { "mid": 1365.5303, "source": "CBN", "as_of": "2026-07-28" },
-      "parallel": { "bid": 1391.50, "ask": 1396.40, "mid": 1393.9484, "provider_count": 43 },
-      "trend_7d": {
-        "parallel_direction": "stable",
-        "official_direction": "stable",
-        "spread_direction": "compressing"
-      }
+      "official":      { "bid": 1364.5303, "ask": 1365.5303, "mid": 1365.5303,
+                       "updated_at": "2026-07-28T00:00:00Z", "high": 1368, "low": 1363 },
+      "parallel":      { "bid": 1383.0164, "ask": 1404.7282, "mid": 1393.8723,
+                       "provider_count": 43 },
+      "crypto_street": null
     },
     "USDT": {
-      "crypto_street": { "bid": 1394.00, "ask": 1398.10, "mid": 1396.065, "provider_count": 16 },
-      "trend_7d": { "parallel_direction": "stable" }
+      "official": null,
+      "parallel": null,
+      "crypto_street": { "bid": 1389.5, "ask": 1402.06, "mid": 1395.78,
+                       "provider_count": 16 }
     }
     <span class="c">// ... 13 more currencies</span>
   },
-  "data_age": {
-    "monierate_minutes": 8,
-    "cbn_minutes": 818
+  "spreads": {
+    "USD": { "parallel_vs_official_pct": 2.08, "usdt_vs_official_pct": 2.22,
+            "usdt_vs_parallel_pct": 0.14 }
+  },
+  "trend_7d": {
+    "USD": { "parallel_direction": "stable", "official_direction": "stable",
+            "spread_direction": "compressing" }
   }
 }</pre>
     </div>
@@ -268,7 +269,7 @@
 
     var monOk = !!(mon && mon.healthy), cbnOk = !!(cbn && cbn.healthy);
     document.getElementById('sources').textContent =
-      (cbnOk ? 'cbn ok' : 'cbn down') + ' \u00B7 ' + (monOk ? 'monierate ok' : 'monierate down');
+      (cbnOk ? 'official ok' : 'official down') + ' \u00B7 ' + (monOk ? 'parallel ok' : 'parallel down');
 
     var stale = h && (h.confidence === 'degraded' || h.status === 'degraded' || !monOk);
     document.getElementById('degraded').style.display = stale ? '' : 'none';
